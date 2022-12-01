@@ -5,8 +5,8 @@ import pandas as pd
 from src.data.repository import Repository
 from src.models.base_model import Model
 
-class KaggleModel2(Model):
 
+class KaggleModel2(Model):
     def train(self):
         pass
 

@@ -2,8 +2,8 @@ from typing import Iterable, Tuple
 
 import pandas as pd
 
-class Repository:
 
+class Repository:
     def get_training_data_raw(self) -> Iterable[Tuple[str, str]]:
         raise NotImplementedError()
 

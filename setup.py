@@ -8,6 +8,7 @@ def read(fname):
     """Helper for README file."""
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+
 setup(
     name="src",
     version="0.0.0",

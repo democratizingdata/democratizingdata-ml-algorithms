@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.data.repository import Repository
 
+
 @dc.dataclass
 class Model:
     storage_dir: str
