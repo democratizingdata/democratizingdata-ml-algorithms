@@ -73,8 +73,10 @@
 # word (parenthesis are dropped) and N_{total}(str) is the total number
 # of times str present in texts. All mentions with  F_d<0.1  are dropped.
 
+from collections import defaultdict
 import re
-from typing import List
+from itertools import filterfalse
+from typing import Dict, List, Set
 
 import pandas as pd
 
@@ -172,26 +174,50 @@ class KaggleModel3(Model):
             for a in cur_abbrs
             if not any(tok.islower() for tok in KaggleModel3.TOKENIZE_PAT.findall(a))
         ]
-        print(cur_abbrs)
-        fabbrs = []
-        for abbr in cur_abbrs:
-            if not (
-                sum(
+
+        # Remove an instances that captial letters followed by lower case letters
+        # maybe this catches phrases that are within parenthesis
+        fabbrs = list(
+            filterfalse(
+                lambda abbr: sum(
                     bool(re.findall("[A-Z][a-z]+", tok))
                     for tok in KaggleModel3.TOKENIZE_PAT.findall(abbr)
                 )
-                > 2
-            ):
-                fabbrs.append(abbr)
+                > 2,
+                cur_abbrs,
+            )
+        )
+
         return fabbrs
+
+    @staticmethod
+    def __get_index(texts: List[str], words: List[str]) -> Dict[str, Set[int]]:
+        # Returns a dictionary where words are keys and values are indices
+        # of documents (sentences) in texts, in which the word present
+        index = defaultdict(set)
+        words = set(words)
+        words = {
+            w
+            for w in words
+            if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
+        }
+        for n, text in enumerate(texts):
+            tokens = KaggleModel3.__tokenize(text)
+            for tok in tokens:
+                if tok in words:
+                    index[tok].add(n)
+        return index
+
+    @staticmethod
+    def __tokenize(text: str) -> List[str]:
+        return KaggleModel3.TOKENIZE_PAT.findall(text)
 
 
 if __name__ == "__main__":
 
-    input = "This model was trained on the Really Great Dataset (RGD) and it worked well on the Really Great Dataset (RGD)."
+    input = (
+        "This model was trained on the Really Great Dataset (RGD)"
+        + " and it went well (though not that well)."
+    )
     dataset = "Really Great Dataset"
-    assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD", "RGD"]
-
-    # input = "This model was trained on the Really Great Dataset (RGD) and Really Great Dataset Two (RGD) and it worked well."
-    # dataset = "Really Great Dataset Two"
-    # print(KaggleModel3.get_parenthesis(text=input, dataset=dataset))
+    assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
