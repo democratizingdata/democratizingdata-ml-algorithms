@@ -139,11 +139,11 @@ class KaggleModel3(Model):
     BR_PAT = re.compile(r"\s?\((.*)\)")
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
-    def __init__(self, storage_directory: str, repository: Repository):
+    def __init__(self, storage_directory: str):
         self.storage_directory = storage_directory
-        self.repository = repository
 
-    def train(self):
+    def train(self, repository: Repository):
+        self.repository = repository
         pass
 
     def inference_string(self, text: str) -> str:
@@ -210,7 +210,65 @@ class KaggleModel3(Model):
 
     @staticmethod
     def __tokenize(text: str) -> List[str]:
+        """ TOKENIZE_PAT = re.compile(r"[\w']+|[^\w ]") """
         return KaggleModel3.TOKENIZE_PAT.findall(text)
+
+    @staticmethod
+    def __clean_text(text:str) -> str:
+        return re.sub("[^A-Za-z0-9]+", " ", str(text).lower()).strip()
+
+    @staticmethod
+    def __tokenized_extract(texts:List[str], keywords:List[str]) -> List[str]:
+        # Exracts all mentions of the form
+        # Xxx Xxx Keyword Xxx (XXX)
+        connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
+        datasets = []
+        for text in texts:
+            # ryanhausen: the code below was wrapped in try/except block, not sure why...
+            # Skip texts without parenthesis or Xxx Xxx Keyword Xxx (XXX) keywords
+            if "(" not in text or all(not kw in text for kw in keywords):
+                continue
+
+            toks = list(KaggleModel3.TOKENIZE_PAT.finditer(text))
+            toksg = [tok.group() for tok in toks]
+
+            # found = False # ryanhausen: this is set, but never used
+            current_dss = set()
+            for n in range(1, len(toks) - 2):
+                is_camel = bool(KaggleModel3.CAMEL_PAT.findall(toksg[n + 1]))
+                is_caps = toksg[n + 1].isupper()
+
+                if (
+                    toksg[n] == "("
+                    and (is_caps or is_camel)
+                    and toksg[n + 2] == ")"
+                ):
+                    end = toks[n + 2].span()[1]
+                    n_capi = 0
+                    has_kw = False
+                    for tok, tokg in zip(toks[n - 1 :: -1], toksg[n - 1 :: -1]):
+                        if tokg in keywords:
+                            has_kw = True
+                        if (
+                            tokg[0].isupper()
+                            and tokg.lower() not in connection_words
+                        ):
+                            n_capi += 1
+                            start = tok.span()[0]
+                        elif tokg in connection_words or tokg == "-":
+                            continue
+                        else:
+                            break
+                    if n_capi > 1 and has_kw:
+                        ds = text[start:end]
+                        datasets.append(ds)
+                        # found = True
+                        current_dss.add(ds)
+
+        return datasets
+
+
+
 
 
 if __name__ == "__main__":
@@ -221,3 +279,6 @@ if __name__ == "__main__":
     )
     dataset = "Really Great Dataset"
     assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
+
+
+
