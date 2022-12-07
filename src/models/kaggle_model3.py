@@ -76,7 +76,7 @@
 from collections import defaultdict
 import re
 from itertools import filterfalse
-from typing import Dict, List, Set
+from typing import Any, Callable, Dict, Iterable, List, Set
 
 import pandas as pd
 
@@ -85,7 +85,15 @@ from src.models.base_model import Model
 
 
 class KaggleModel3(Model):
-    """This class is based on the Kaggle model 3 notebook."""
+    """This class is based on the Kaggle model 3 notebook.
+
+    Model 3 is a heuristic model, so it doesn't need to be "trained" in the
+    deep learning sense. It will extract mentions that fit the format:
+
+    ``` Xxx Xxx Keyword Xxx (XXX)```
+
+    Where keyword is one of the keywords in the KaggleModel3.KEYWORDS list.
+    """
 
     KEYWORDS = [
         "Study",
@@ -139,17 +147,24 @@ class KaggleModel3(Model):
     BR_PAT = re.compile(r"\s?\((.*)\)")
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
-    def __init__(self, storage_directory: str):
-        self.storage_directory = storage_directory
+    def train(self, repository:Repository, config:Dict[str, Any]) -> None:
+        """ Extracts dataset mentions and saves them to config["params"]
 
-    def train(self, repository: Repository):
-        self.repository = repository
-        pass
+        Args:
+            repository (Repository): Repository object
+            config (Dict[str, Any]): Configuration dictionary
 
-    def inference_string(self, text: str) -> str:
+        Returns:
+            None
+        """
+
+
+
+
+    def inference_string(self, config:Dict[str, Any], text: str) -> str:
         raise NotImplementedError()
 
-    def inference_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+    def inference_dataframe(self, config:Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         raise NotImplementedError()
 
     @staticmethod
@@ -191,7 +206,7 @@ class KaggleModel3(Model):
         return fabbrs
 
     @staticmethod
-    def __get_index(texts: List[str], words: List[str]) -> Dict[str, Set[int]]:
+    def _get_index(texts: List[str], words: List[str]) -> Dict[str, Set[int]]:
         # Returns a dictionary where words are keys and values are indices
         # of documents (sentences) in texts, in which the word present
         index = defaultdict(set)
@@ -202,23 +217,23 @@ class KaggleModel3(Model):
             if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
         }
         for n, text in enumerate(texts):
-            tokens = KaggleModel3.__tokenize(text)
+            tokens = KaggleModel3._tokenize(text)
             for tok in tokens:
                 if tok in words:
                     index[tok].add(n)
         return index
 
     @staticmethod
-    def __tokenize(text: str) -> List[str]:
+    def _tokenize(text: str) -> List[str]:
         """ TOKENIZE_PAT = re.compile(r"[\w']+|[^\w ]") """
         return KaggleModel3.TOKENIZE_PAT.findall(text)
 
     @staticmethod
-    def __clean_text(text:str) -> str:
+    def _clean_text(text:str) -> str:
         return re.sub("[^A-Za-z0-9]+", " ", str(text).lower()).strip()
 
     @staticmethod
-    def __tokenized_extract(texts:List[str], keywords:List[str]) -> List[str]:
+    def _tokenized_extract(texts:List[str], keywords:List[str]) -> List[str]:
         # Exracts all mentions of the form
         # Xxx Xxx Keyword Xxx (XXX)
         connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
@@ -269,16 +284,60 @@ class KaggleModel3(Model):
 
 
 
+class MapFilter:
+    """Base Class that applied a map and filter function to an iterable.
+
+    The author of Model 3 originally had setup a series of steps that map
+    and filter the input. This class is a way to encapsulate that
+    """
+    def __init__(
+        self, map_f: Callable = lambda x: x, filter_f: Callable = lambda x: True
+    ):
+        self.map_f = map_f
+        self.filter_f = filter_f
+
+    def __call__(self, input: Iterable) -> Iterable:
+        return map(self.map_f, filter(self.filter_f, input))
+
+
+class MapFilter_AndThe(MapFilter):
+    """Splits sentences on " and the " and returns the last part of the split."""
+    def __init__(self):
+        pat = re.compile(" and [Tt]he ")
+        map_f = lambda ds: pat.split(ds)[-1]
+        super().__init__(map_f=map_f)
+
+
+class MapFilter_StopWords(MapFilter):
+    """Filters out sentences that contain stopwords."""
+    def __init__(self, stopwords, do_lower=True):
+        lower_f = lambda x: x.lower() if do_lower else x
+        stopwords = list(map(lower_f, stopwords))
+
+        def filter_f(ds):
+            ds_lower = lower_f(ds)
+            return not any(sw in ds_lower for sw in stopwords)
+
+        super().__init__(filter_f=filter_f)
+
+
 
 
 if __name__ == "__main__":
 
     input = (
         "This model was trained on the Really Great Dataset (RGD)"
-        + " and it went well (though not that well)."
+        + " and the Really Bad Dataset (RBD) and it went well"
+        + " (though not that well)."
     )
     dataset = "Really Great Dataset"
+    KaggleModel3.get_parenthesis(text=input, dataset=dataset)
     assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
+    assert KaggleModel3._tokenized_extract([input], KaggleModel3.KEYWORDS) == ['Really Great Dataset (RGD)', "Really Bad Dataset (RBD)"]
+
+    assert list(MapFilter_AndThe()([input])) == ['Really Bad Dataset (RBD) and it went well (though not that well).']
+    assert list(MapFilter_StopWords(stopwords=["really", "bad"])([input])) == []
+    assert list(MapFilter_StopWords(stopwords=["stopword"])([input])) == [input]
 
 
 
