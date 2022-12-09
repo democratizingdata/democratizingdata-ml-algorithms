@@ -147,8 +147,8 @@ class KaggleModel3(Model):
     BR_PAT = re.compile(r"\s?\((.*)\)")
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
-    def train(self, repository:Repository, config:Dict[str, Any]) -> None:
-        """ Extracts dataset mentions and saves them to config["params"]
+    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
+        """Extracts dataset mentions and saves them to config["params"]
 
         Args:
             repository (Repository): Repository object
@@ -158,13 +158,12 @@ class KaggleModel3(Model):
             None
         """
 
-
-
-
-    def inference_string(self, config:Dict[str, Any], text: str) -> str:
+    def inference_string(self, config: Dict[str, Any], text: str) -> str:
         raise NotImplementedError()
 
-    def inference_dataframe(self, config:Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    def inference_dataframe(
+        self, config: Dict[str, Any], df: pd.DataFrame
+    ) -> pd.DataFrame:
         raise NotImplementedError()
 
     @staticmethod
@@ -210,30 +209,29 @@ class KaggleModel3(Model):
         # Returns a dictionary where words are keys and values are indices
         # of documents (sentences) in texts, in which the word present
         index = defaultdict(set)
-        words = set(words)
-        words = {
+        word_set = set(words)
+        word_set = {
             w
-            for w in words
+            for w in word_set
             if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
         }
         for n, text in enumerate(texts):
             tokens = KaggleModel3._tokenize(text)
             for tok in tokens:
-                if tok in words:
+                if tok in word_set:
                     index[tok].add(n)
         return index
 
     @staticmethod
     def _tokenize(text: str) -> List[str]:
-        """ TOKENIZE_PAT = re.compile(r"[\w']+|[^\w ]") """
         return KaggleModel3.TOKENIZE_PAT.findall(text)
 
     @staticmethod
-    def _clean_text(text:str) -> str:
+    def _clean_text(text: str) -> str:
         return re.sub("[^A-Za-z0-9]+", " ", str(text).lower()).strip()
 
     @staticmethod
-    def _tokenized_extract(texts:List[str], keywords:List[str]) -> List[str]:
+    def _tokenized_extract(texts: List[str], keywords: List[str]) -> List[str]:
         # Exracts all mentions of the form
         # Xxx Xxx Keyword Xxx (XXX)
         connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
@@ -253,21 +251,15 @@ class KaggleModel3(Model):
                 is_camel = bool(KaggleModel3.CAMEL_PAT.findall(toksg[n + 1]))
                 is_caps = toksg[n + 1].isupper()
 
-                if (
-                    toksg[n] == "("
-                    and (is_caps or is_camel)
-                    and toksg[n + 2] == ")"
-                ):
+                if toksg[n] == "(" and (is_caps or is_camel) and toksg[n + 2] == ")":
                     end = toks[n + 2].span()[1]
                     n_capi = 0
                     has_kw = False
+                    start = 0
                     for tok, tokg in zip(toks[n - 1 :: -1], toksg[n - 1 :: -1]):
                         if tokg in keywords:
                             has_kw = True
-                        if (
-                            tokg[0].isupper()
-                            and tokg.lower() not in connection_words
-                        ):
+                        if tokg[0].isupper() and tokg.lower() not in connection_words:
                             n_capi += 1
                             start = tok.span()[0]
                         elif tokg in connection_words or tokg == "-":
@@ -283,13 +275,13 @@ class KaggleModel3(Model):
         return datasets
 
 
-
 class MapFilter:
     """Base Class that applied a map and filter function to an iterable.
 
     The author of Model 3 originally had setup a series of steps that map
     and filter the input. This class is a way to encapsulate that
     """
+
     def __init__(
         self, map_f: Callable = lambda x: x, filter_f: Callable = lambda x: True
     ):
@@ -302,25 +294,84 @@ class MapFilter:
 
 class MapFilter_AndThe(MapFilter):
     """Splits sentences on " and the " and returns the last part of the split."""
+
     def __init__(self):
         pat = re.compile(" and [Tt]he ")
-        map_f = lambda ds: pat.split(ds)[-1]
+        map_f: Callable[[str], str] = lambda ds: pat.split(ds)[-1]
         super().__init__(map_f=map_f)
 
 
 class MapFilter_StopWords(MapFilter):
     """Filters out sentences that contain stopwords."""
-    def __init__(self, stopwords, do_lower=True):
-        lower_f = lambda x: x.lower() if do_lower else x
+
+    def __init__(self, stopwords: List[str], do_lower: bool = True):
+        lower_f: Callable[[str], str] = lambda x: x.lower() if do_lower else x
         stopwords = list(map(lower_f, stopwords))
 
-        def filter_f(ds):
+        def filter_f(ds: str) -> bool:
             ds_lower = lower_f(ds)
             return not any(sw in ds_lower for sw in stopwords)
 
         super().__init__(filter_f=filter_f)
 
 
+class MapFilter_IntroSSAI(MapFilter):
+    """I am not completely sure what this does, but it is used in Model 3.
+
+    This rule seems hacky and should be refactored
+    """
+
+    def __init__(self, keywords: List[str], tokenize_pattern: re.Pattern):
+        connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
+
+        def map_f(ds: str) -> str:
+            toks_spans = list(tokenize_pattern.finditer(ds))
+            toks = [t.group() for t in toks_spans]
+
+            start = 0
+            if len(toks) > 3:
+                if toks[1] == "the":
+                    start = toks_spans[2].span()[0]
+                elif (
+                    toks[0] not in keywords
+                    and toks[1] in connection_words
+                    and len(toks) > 2
+                    and toks[2] in connection_words
+                ):
+                    start = toks_spans[3].span()[0]
+                elif toks[0].endswith("ing") and toks[1] in connection_words:
+                    if toks[2] not in connection_words:
+                        start_tok = 2
+                    else:
+                        start_tok = 3
+                    start = toks_spans[start_tok].span()[0]
+                return ds[start:]
+            else:
+                return ds
+
+        super().__init__(map_f=map_f)
+
+
+class MapFilter_IntroWords(MapFilter):
+    """This replaces the first word and "the" or "to the" with ""."""
+
+    def __init__(self):
+        miss_intro_pat = re.compile("^[A-Z][a-z']+ (?:the|to the) ")
+        map_f: Callable[[str], str] = lambda ds: miss_intro_pat.sub("", ds)
+
+        super().__init__(map_f)
+
+
+class MapFilter_BRLessThanTwoWords(MapFilter):
+    """This filters out strings that contain less thant two words, excluding phrases in parenthesis."""
+
+    def __init__(self, br_pat: re.Pattern, tokenize_pat: re.Pattern):
+
+        filter_f: Callable[[str], bool] = (
+            lambda ds: len(tokenize_pat.findall(br_pat.sub("", ds))) > 2
+        )
+
+        super().__init__(filter_f=filter_f)
 
 
 if __name__ == "__main__":
@@ -333,11 +384,28 @@ if __name__ == "__main__":
     dataset = "Really Great Dataset"
     KaggleModel3.get_parenthesis(text=input, dataset=dataset)
     assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
-    assert KaggleModel3._tokenized_extract([input], KaggleModel3.KEYWORDS) == ['Really Great Dataset (RGD)', "Really Bad Dataset (RBD)"]
+    assert KaggleModel3._tokenized_extract([input], KaggleModel3.KEYWORDS) == [
+        "Really Great Dataset (RGD)",
+        "Really Bad Dataset (RBD)",
+    ]
 
-    assert list(MapFilter_AndThe()([input])) == ['Really Bad Dataset (RBD) and it went well (though not that well).']
+    assert list(MapFilter_AndThe()([input])) == [
+        "Really Bad Dataset (RBD) and it went well (though not that well)."
+    ]
     assert list(MapFilter_StopWords(stopwords=["really", "bad"])([input])) == []
     assert list(MapFilter_StopWords(stopwords=["stopword"])([input])) == [input]
 
+    assert list(
+        MapFilter_IntroSSAI(
+            keywords=KaggleModel3.KEYWORDS, tokenize_pattern=KaggleModel3.TOKENIZE_PAT
+        )(["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"])
+    ) == ["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"]
 
-
+    assert list(MapFilter_IntroWords()(["Really to the data is great"])) == [
+        "data is great"
+    ]
+    assert list(
+        MapFilter_BRLessThanTwoWords(
+            br_pat=KaggleModel3.BR_PAT, tokenize_pat=KaggleModel3.TOKENIZE_PAT
+        )([input, "Hello World (HW)"])
+    ) == [input]
