@@ -73,7 +73,7 @@
 # word (parenthesis are dropped) and N_{total}(str) is the total number
 # of times str present in texts. All mentions with  F_d<0.1  are dropped.
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 import re
 from itertools import filterfalse
 from typing import Any, Callable, Dict, Iterable, List, Set
@@ -144,7 +144,9 @@ class KaggleModel3(Model):
 
     TOKENIZE_PAT = re.compile(r"[\w']+|[^\w ]")
     CAMEL_PAT = re.compile(r"(\b[A-Z]+[a-z]+[A-Z]\w+)")
-    BR_PAT = re.compile(r"\s?\((.*)\)")
+    BR_PAT = re.compile(
+        r"\s?\((.*)\)"
+    )  # matches: whitespace, open bracket, anything, close bracket
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
     def train(self, repository: Repository, config: Dict[str, Any]) -> None:
@@ -292,6 +294,9 @@ class MapFilter:
         return map(self.map_f, filter(self.filter_f, input))
 
 
+# ==============================================================================
+# First stage map filters that can be applied batchwise and are independent of
+# each other.
 class MapFilter_AndThe(MapFilter):
     """Splits sentences on " and the " and returns the last part of the split."""
 
@@ -353,7 +358,7 @@ class MapFilter_IntroSSAI(MapFilter):
 
 
 class MapFilter_IntroWords(MapFilter):
-    """This replaces the first word and "the" or "to the" with ""."""
+    """This replaces the first word and "the" or "to the" with '.'"""
 
     def __init__(self):
         miss_intro_pat = re.compile("^[A-Z][a-z']+ (?:the|to the) ")
@@ -369,6 +374,34 @@ class MapFilter_BRLessThanTwoWords(MapFilter):
 
         filter_f: Callable[[str], bool] = (
             lambda ds: len(tokenize_pat.findall(br_pat.sub("", ds))) > 2
+        )
+
+        super().__init__(filter_f=filter_f)
+
+
+# ==============================================================================
+
+# ==============================================================================
+# Second stage map filters that can be applied batchwise and are dependent on
+# on statistics from the first stage.
+class MapFilter_PartialMatchDatasets(MapFilter):
+    """This filters out subsets of strings that are between parenthesis and exist in the dataset."""
+
+    def __init__(self, dataset: List[str], br_pat: re.Pattern):
+
+        counter = Counter(dataset)
+        abbrs_used = set()
+        golden_ds_with_br = []
+
+        for ds, _ in counter.most_common():
+            abbr = br_pat.findall(ds)[0]
+
+            if abbr not in abbrs_used:
+                abbrs_used.add(abbr)
+                golden_ds_with_br.append(ds)
+
+        filter_f = lambda ds: not any(
+            (ds in ds_) and (ds != ds_) for ds_ in golden_ds_with_br
         )
 
         super().__init__(filter_f=filter_f)
@@ -408,4 +441,10 @@ if __name__ == "__main__":
         MapFilter_BRLessThanTwoWords(
             br_pat=KaggleModel3.BR_PAT, tokenize_pat=KaggleModel3.TOKENIZE_PAT
         )([input, "Hello World (HW)"])
+    ) == [input]
+
+    assert list(
+        MapFilter_PartialMatchDatasets(dataset=[input], br_pat=KaggleModel3.BR_PAT)(
+            [input]
+        )
     ) == [input]
