@@ -76,7 +76,7 @@
 from collections import Counter, defaultdict
 import re
 from itertools import filterfalse
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import pandas as pd
 
@@ -368,7 +368,7 @@ class MapFilter_IntroWords(MapFilter):
 
 
 class MapFilter_BRLessThanTwoWords(MapFilter):
-    """This filters out strings that contain less thant two words, excluding phrases in parenthesis."""
+    """This filters out strings that contain less than two words, excluding phrases in parenthesis."""
 
     def __init__(self, br_pat: re.Pattern, tokenize_pat: re.Pattern):
 
@@ -418,13 +418,13 @@ class MapFilter_PartialMatchDatasets(MapFilter):
 class MapFilter_TrainCounts(MapFilter):
     def __init__(
         self,
-        texts, # REFACTOR: this is ALL the texts
-        datasets, # this is the curried set of datasets
+        texts,  # REFACTOR: this is ALL the texts
+        datasets,  # this is the curried set of datasets
         index,
-        kw,     # this is a selected keyword orginally "data"
-        min_train_count, # min occurences in dataset defualt 2
-        rel_freq_threshold, # default 0.1
-        tokenize_pat, # tokenization pattern
+        kw,  # this is a selected keyword orginally "data"
+        min_train_count,  # min occurences in dataset defualt 2
+        rel_freq_threshold,  # default 0.1
+        tokenize_pat,  # tokenization pattern
     ):
         # Filter by relative frequency (no parenthesis)
         # (check the formula in the first cell)
@@ -458,7 +458,7 @@ class MapFilter_TrainCounts(MapFilter):
         super().__init__(filter_f=filter_f)
 
     @staticmethod
-    def extend_paranthesis(datasets):
+    def extend_paranthesis(datasets: List[str]) -> List[str]:
         # Return each instance of dataset from datasets +
         # the same instance without parenthesis (if there are some)
         pat = re.compile("\(.*\)")
@@ -471,7 +471,14 @@ class MapFilter_TrainCounts(MapFilter):
         return extended_datasets
 
     @staticmethod
-    def get_train_predictions_counts_data(texts, datasets, index, kw, tokenize_pat):
+    def get_train_predictions_counts_data(
+        texts: List[str],
+        datasets: List[str],
+        index: Dict[str, Set[int]],
+        kw: Union[str, List[str]],
+        tokenize_pat: re.Pattern,
+    ):
+        # Original author notes:
         # Returns N_data and N_total counts dictionary
         # (check the formulas in the first cell)
         pred_count = Counter()
@@ -480,20 +487,59 @@ class MapFilter_TrainCounts(MapFilter):
             kw = [kw]
 
         for ds in datasets:
-            first_tok, *toks = tokenize_pat.findall(ds)
+            # REFACTOR: this unpacks the first token and the rest of the tokens
+            # and then combines them into a list???
+            # first_tok, *toks = tokenize_pat.findall(ds)
+            toks = tokenize_pat.findall(ds)
             to_search = None
-            for tok in [first_tok] + toks:
+            # for tok in [first_tok] + toks:
+            for tok in toks:
                 if index.get(tok):
                     if to_search is None:
-                        to_search = set(index[tok])
+                        # to_search = set(index[tok])
+                        to_search = index[tok]
                     else:
                         to_search &= index[tok]
             for doc_idx in to_search:
                 text = texts[doc_idx]
+                # Here we're going to check if the dataset mention exists in the 
+                # text and if it does we increment the dataset count and if the 
+                # kw ("data" in the original author's setup) is in the text we 
+                # increment the data count.
                 if ds in text:
                     pred_count[ds] += 1
                     data_count[ds] += int(any(w in text.lower() for w in kw))
         return pred_count, data_count
+
+    @staticmethod
+    def get_index(texts: List[str], input_words: List[str]) -> Dict[str, Set[int]]:
+        """Returns a Dictionary that maps input_words to the indices of the documents they apeared in."""
+
+        # Original author notes:
+        # Returns a dictionary where words are keys and values are indices
+        # of documents (sentences) in texts, in which the word present
+        index = defaultdict(set)
+        # words = set(words)
+        # words = {
+        #     w
+        #     for w in words
+        #     if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
+        # }
+        words = set(
+            filter(
+                lambda w: w.lower() not in KaggleModel3.PREPS
+                and re.sub("'", "", w).isalnum(),
+                input_words,
+            )
+        )
+
+        for n, text in enumerate(texts):
+            # this tokenizes entire documents
+            tokens = KaggleModel3._tokenize(text)
+            for tok in tokens:
+                if tok in words:
+                    index[tok].add(n)
+        return index
 
 
 class MapFilter_BRPatSub(MapFilter):
@@ -547,3 +593,23 @@ if __name__ == "__main__":
             [input]
         )
     ) == [input]
+
+    assert MapFilter_TrainCounts.get_index(
+        [input, input[: input.index("Dataset")]], ["Really", "Great", "Dataset"]
+    ) == {"Really": {0, 1}, "Great": {0, 1}, "Dataset": {0}}
+
+    assert MapFilter_TrainCounts.extend_paranthesis(["Really Great Dataset (RGD)"]) == [
+        "Really Great Dataset",
+        "Really Great Dataset (RGD)",
+    ]
+
+
+    assert MapFilter_TrainCounts.get_train_predictions_counts_data(
+        texts=[input, input[: input.index("Dataset")]],
+        datasets=["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"],
+        index=MapFilter_TrainCounts.get_index(
+            [input, input[: input.index("Dataset")]], ["Really", "Great", "Dataset", "Really", "Bad", "Dataset"]
+        ),
+        kw="data",
+        tokenize_pat=KaggleModel3.TOKENIZE_PAT,
+    ) == (Counter({'Really Great Dataset (RGD)': 1, 'Really Bad Dataset (RBD)': 1}), Counter({'Really Great Dataset (RGD)': 1, 'Really Bad Dataset (RBD)': 1}))
