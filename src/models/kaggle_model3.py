@@ -76,7 +76,7 @@
 from collections import Counter, defaultdict
 import re
 from itertools import filterfalse
-from typing import Any, Callable, Dict, Iterable, List, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 import pandas as pd
 
@@ -382,29 +382,128 @@ class MapFilter_BRLessThanTwoWords(MapFilter):
 # ==============================================================================
 
 # ==============================================================================
-# Second stage map filters that can be applied batchwise and are dependent on
-# on statistics from the first stage.
+# Second stage map filters that can be applied batchwise and applied after
+# aggregate data is collected over the whole dataset.
 class MapFilter_PartialMatchDatasets(MapFilter):
     """This filters out subsets of strings that are between parenthesis and exist in the dataset."""
 
-    def __init__(self, dataset: List[str], br_pat: re.Pattern):
+    def __init__(
+        self,
+        dataset: List[str],
+        br_pat: re.Pattern,
+        n_most_common: Optional[int] = None,
+    ):
 
         counter = Counter(dataset)
         abbrs_used = set()
         golden_ds_with_br = []
 
-        for ds, _ in counter.most_common():
+        # REFACTOR: will have to save to disk/restore/merge counts
+        for ds, _ in counter.most_common(n=n_most_common):
             abbr = br_pat.findall(ds)[0]
 
             if abbr not in abbrs_used:
                 abbrs_used.add(abbr)
                 golden_ds_with_br.append(ds)
 
-        filter_f = lambda ds: not any(
+        filter_f: Callable[[str], bool] = lambda ds: not any(
             (ds in ds_) and (ds != ds_) for ds_ in golden_ds_with_br
         )
 
         super().__init__(filter_f=filter_f)
+
+
+# This class might need to be refactored to consider taking a second pass
+# over the dataset to collect more information.
+class MapFilter_TrainCounts(MapFilter):
+    def __init__(
+        self,
+        texts, # REFACTOR: this is ALL the texts
+        datasets, # this is the curried set of datasets
+        index,
+        kw,     # this is a selected keyword orginally "data"
+        min_train_count, # min occurences in dataset defualt 2
+        rel_freq_threshold, # default 0.1
+        tokenize_pat, # tokenization pattern
+    ):
+        # Filter by relative frequency (no parenthesis)
+        # (check the formula in the first cell)
+        (
+            tr_counts,
+            data_counts,
+        ) = MapFilter_TrainCounts.get_train_predictions_counts_data(
+            texts,
+            MapFilter_TrainCounts.extend_paranthesis(set(datasets)),
+            index,
+            kw,
+            tokenize_pat,
+        )
+        stats = {}
+
+        for ds, count in Counter(datasets).most_common():
+            stats[ds] = [
+                count,
+                tr_counts[ds],
+                tr_counts[re.sub("[\s]?\(.*\)", "", ds)],
+                data_counts[ds],
+                data_counts[re.sub("[\s]?\(.*\)", "", ds)],
+            ]
+
+        def filter_f(ds):
+            count, tr_count, tr_count_no_br, dcount, dcount_nobr = stats[ds]
+            return (tr_count_no_br > min_train_count) and (
+                dcount_nobr / tr_count_no_br > rel_freq_threshold
+            )
+
+        super().__init__(filter_f=filter_f)
+
+    @staticmethod
+    def extend_paranthesis(datasets):
+        # Return each instance of dataset from datasets +
+        # the same instance without parenthesis (if there are some)
+        pat = re.compile("\(.*\)")
+        extended_datasets = []
+        for ds in datasets:
+            ds_no_parenth = pat.sub("", ds).strip()
+            if ds != ds_no_parenth:
+                extended_datasets.append(ds_no_parenth)
+            extended_datasets.append(ds)
+        return extended_datasets
+
+    @staticmethod
+    def get_train_predictions_counts_data(texts, datasets, index, kw, tokenize_pat):
+        # Returns N_data and N_total counts dictionary
+        # (check the formulas in the first cell)
+        pred_count = Counter()
+        data_count = Counter()
+        if isinstance(kw, str):
+            kw = [kw]
+
+        for ds in datasets:
+            first_tok, *toks = tokenize_pat.findall(ds)
+            to_search = None
+            for tok in [first_tok] + toks:
+                if index.get(tok):
+                    if to_search is None:
+                        to_search = set(index[tok])
+                    else:
+                        to_search &= index[tok]
+            for doc_idx in to_search:
+                text = texts[doc_idx]
+                if ds in text:
+                    pred_count[ds] += 1
+                    data_count[ds] += int(any(w in text.lower() for w in kw))
+        return pred_count, data_count
+
+
+class MapFilter_BRPatSub(MapFilter):
+    """This removes the strings between parenthesis."""
+
+    def __init__(self, br_pat):
+
+        map_f: Callable[[str], str] = lambda ds: br_pat.sub("", ds)
+
+        super().__init__(map_f=map_f)
 
 
 if __name__ == "__main__":
