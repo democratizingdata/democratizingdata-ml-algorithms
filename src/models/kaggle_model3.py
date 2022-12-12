@@ -75,12 +75,13 @@
 
 from collections import Counter, defaultdict
 import re
-from itertools import filterfalse
+from itertools import chain, filterfalse
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 
 import pandas as pd
 
 from src.data.repository import Repository
+from src.data.kaggle_repository import KaggleRepository
 from src.models.base_model import Model
 
 
@@ -159,6 +160,60 @@ class KaggleModel3(Model):
         Returns:
             None
         """
+
+        # Refactor this to use batches
+        train_df = next(repository.get_training_data_dataframe(batch_size=config["batch_size"]))
+        print(train_df)
+        texts = train_df["text"].values
+        train_labels = train_df["dataset_label"].values
+
+        ssai_par_datasets = KaggleModel3._tokenized_extract(texts, train_labels)
+        words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
+
+        mapfilters = [
+            MapFilter_AndThe(),
+            MapFilter_StopWords(KaggleModel3.STOPWORDS_PAR),
+            MapFilter_IntroSSAI(KaggleModel3.KEYWORDS, KaggleModel3.TOKENIZE_PAT),
+            MapFilter_IntroWords(),
+            MapFilter_BRLessThanTwoWords(
+                KaggleModel3.BR_PAT, KaggleModel3.TOKENIZE_PAT
+            ),
+        ]
+
+        for f in mapfilters:
+            ssai_par_datasets = f(ssai_par_datasets)
+
+        mapfilters = [
+            MapFilter_PartialMatchDatasets(ssai_par_datasets, KaggleModel3.BR_PAT),
+            MapFilter_TrainCounts(
+                texts,
+                ssai_par_datasets,
+                KaggleModel3._get_index(texts, words),
+                config["keyword"],  # "data"
+                config["min_train_count"],  # 2
+                config["rel_freq_threshold"],  # 0.1
+                KaggleModel3.TOKENIZE_PAT,
+            ),
+            MapFilter_BRPatSub(KaggleModel3.BR_PAT),
+        ]
+
+        for f in mapfilters:
+            ssai_par_datasets = f(ssai_par_datasets)
+
+        train_labels_set = set(chain(*train_labels))
+        # This line is in the original notebook, but doesn't seem to do anything
+        train_datasets = [
+            KaggleModel3.BR_PAT.sub("", ds).strip() for ds in train_labels_set
+        ]
+        train_datasets = [
+            ds for ds in train_labels_set if sum(ch.islower() for ch in ds) > 0
+        ]
+        datasets = set(ssai_par_datasets) | set(train_datasets)
+
+        self.datasets = datasets
+
+        with open(config["params"], "w") as f:
+            f.write("\n".join(datasets))
 
     def inference_string(self, config: Dict[str, Any], text: str) -> str:
         raise NotImplementedError()
@@ -502,9 +557,9 @@ class MapFilter_TrainCounts(MapFilter):
                         to_search &= index[tok]
             for doc_idx in to_search:
                 text = texts[doc_idx]
-                # Here we're going to check if the dataset mention exists in the 
-                # text and if it does we increment the dataset count and if the 
-                # kw ("data" in the original author's setup) is in the text we 
+                # Here we're going to check if the dataset mention exists in the
+                # text and if it does we increment the dataset count and if the
+                # kw ("data" in the original author's setup) is in the text we
                 # increment the data count.
                 if ds in text:
                     pred_count[ds] += 1
@@ -603,13 +658,26 @@ if __name__ == "__main__":
         "Really Great Dataset (RGD)",
     ]
 
-
     assert MapFilter_TrainCounts.get_train_predictions_counts_data(
         texts=[input, input[: input.index("Dataset")]],
         datasets=["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"],
         index=MapFilter_TrainCounts.get_index(
-            [input, input[: input.index("Dataset")]], ["Really", "Great", "Dataset", "Really", "Bad", "Dataset"]
+            [input, input[: input.index("Dataset")]],
+            ["Really", "Great", "Dataset", "Really", "Bad", "Dataset"],
         ),
         kw="data",
         tokenize_pat=KaggleModel3.TOKENIZE_PAT,
-    ) == (Counter({'Really Great Dataset (RGD)': 1, 'Really Bad Dataset (RBD)': 1}), Counter({'Really Great Dataset (RGD)': 1, 'Really Bad Dataset (RBD)': 1}))
+    ) == (
+        Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
+        Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
+    )
+
+    config = dict(
+        params="",
+        keyword=["data"],
+        min_train_count=2,
+        rel_freq_threshold=0.1,
+        batch_size=-1,
+    )
+
+    KaggleModel3().train(KaggleRepository(), config)
