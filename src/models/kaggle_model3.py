@@ -73,16 +73,20 @@
 # word (parenthesis are dropped) and N_{total}(str) is the total number
 # of times str present in texts. All mentions with  F_d<0.1  are dropped.
 
-from collections import Counter, defaultdict
+import logging
 import re
+from collections import Counter, defaultdict
 from itertools import chain, filterfalse
-from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set, Union
 
 import pandas as pd
+from tqdm import tqdm
 
 from src.data.repository import Repository
 from src.data.kaggle_repository import KaggleRepository
 from src.models.base_model import Model
+
+logger = logging.getLogger("KaggleModel3")
 
 
 class KaggleModel3(Model):
@@ -162,11 +166,16 @@ class KaggleModel3(Model):
         """
 
         # Refactor this to use batches
-        train_df = next(repository.get_training_data_dataframe(batch_size=config["batch_size"]))
-        print(train_df)
-        texts = train_df["text"].values
-        train_labels = train_df["dataset_label"].values
 
+        logger.info("Training...")
+        logger.info(f"Getting data from {repository}")
+        train_df = next(
+            repository.get_training_data_dataframe(batch_size=config["batch_size"])
+        )
+        texts = list(train_df["text"].values)
+        train_labels = list(train_df["dataset_label"].values)
+
+        logger.info(f"Tokenizing {len(texts)} texts...")
         ssai_par_datasets = KaggleModel3._tokenized_extract(texts, train_labels)
         words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
 
@@ -181,7 +190,9 @@ class KaggleModel3(Model):
         ]
 
         for f in mapfilters:
-            ssai_par_datasets = f(ssai_par_datasets)
+            logger.info(f"Applying: {f}")
+            ssai_par_datasets[:5]
+            ssai_par_datasets = list(f(ssai_par_datasets))
 
         mapfilters = [
             MapFilter_PartialMatchDatasets(ssai_par_datasets, KaggleModel3.BR_PAT),
@@ -198,6 +209,7 @@ class KaggleModel3(Model):
         ]
 
         for f in mapfilters:
+            print(f)
             ssai_par_datasets = f(ssai_par_datasets)
 
         train_labels_set = set(chain(*train_labels))
@@ -293,7 +305,7 @@ class KaggleModel3(Model):
         # Xxx Xxx Keyword Xxx (XXX)
         connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
         datasets = []
-        for text in texts:
+        for text in tqdm(texts, desc="Tokenizing"):
             # ryanhausen: the code below was wrapped in try/except block, not sure why...
             # Skip texts without parenthesis or Xxx Xxx Keyword Xxx (XXX) keywords
             if "(" not in text or all(not kw in text for kw in keywords):
@@ -345,7 +357,7 @@ class MapFilter:
         self.map_f = map_f
         self.filter_f = filter_f
 
-    def __call__(self, input: Iterable) -> Iterable:
+    def __call__(self, input: Iterator) -> Iterator:
         return map(self.map_f, filter(self.filter_f, input))
 
 
@@ -360,6 +372,9 @@ class MapFilter_AndThe(MapFilter):
         map_f: Callable[[str], str] = lambda ds: pat.split(ds)[-1]
         super().__init__(map_f=map_f)
 
+    def __repr__(self) -> str:
+        return "MapFilter_AndThe"
+
 
 class MapFilter_StopWords(MapFilter):
     """Filters out sentences that contain stopwords."""
@@ -373,6 +388,9 @@ class MapFilter_StopWords(MapFilter):
             return not any(sw in ds_lower for sw in stopwords)
 
         super().__init__(filter_f=filter_f)
+
+    def __repr__(self) -> str:
+        return "MapFilter_StopWords"
 
 
 class MapFilter_IntroSSAI(MapFilter):
@@ -411,6 +429,9 @@ class MapFilter_IntroSSAI(MapFilter):
 
         super().__init__(map_f=map_f)
 
+    def __repr__(self) -> str:
+        return "MapFilter_IntroSSAI"
+
 
 class MapFilter_IntroWords(MapFilter):
     """This replaces the first word and "the" or "to the" with '.'"""
@@ -420,6 +441,9 @@ class MapFilter_IntroWords(MapFilter):
         map_f: Callable[[str], str] = lambda ds: miss_intro_pat.sub("", ds)
 
         super().__init__(map_f)
+
+    def __repr__(self) -> str:
+        return "MapFilter_IntroWords"
 
 
 class MapFilter_BRLessThanTwoWords(MapFilter):
@@ -432,6 +456,9 @@ class MapFilter_BRLessThanTwoWords(MapFilter):
         )
 
         super().__init__(filter_f=filter_f)
+
+    def __repr__(self) -> str:
+        return "MapFilter_BRLessThanTwoWords"
 
 
 # ==============================================================================
@@ -466,6 +493,9 @@ class MapFilter_PartialMatchDatasets(MapFilter):
         )
 
         super().__init__(filter_f=filter_f)
+
+    def __repr__(self) -> str:
+        return "MapFilter_PartialMatchDatasets"
 
 
 # This class might need to be refactored to consider taking a second pass
@@ -596,6 +626,9 @@ class MapFilter_TrainCounts(MapFilter):
                     index[tok].add(n)
         return index
 
+    def __repr__(self) -> str:
+        return f"MapFilter_TrainCounts"
+
 
 class MapFilter_BRPatSub(MapFilter):
     """This removes the strings between parenthesis."""
@@ -605,6 +638,9 @@ class MapFilter_BRPatSub(MapFilter):
         map_f: Callable[[str], str] = lambda ds: br_pat.sub("", ds)
 
         super().__init__(map_f=map_f)
+
+    def __repr__(self) -> str:
+        return f"MapFilter_BRPatSub"
 
 
 if __name__ == "__main__":
@@ -673,11 +709,11 @@ if __name__ == "__main__":
     )
 
     config = dict(
-        params="",
+        params="models/kagglemodel3/params.txt",
         keyword=["data"],
         min_train_count=2,
         rel_freq_threshold=0.1,
         batch_size=-1,
     )
-
+    logging.basicConfig(level=logging.INFO)
     KaggleModel3().train(KaggleRepository(), config)
