@@ -72,18 +72,19 @@
 # where N_{data}(str) is the number of times the str occures with data
 # word (parenthesis are dropped) and N_{total}(str) is the total number
 # of times str present in texts. All mentions with  F_d<0.1  are dropped.
-
 import logging
+import os
 import re
 from collections import Counter, defaultdict
 from itertools import chain, filterfalse
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set, Union
+from typing import (Any, Callable, Dict, Iterable, Iterator, List, Optional,
+                    Set, Union)
 
 import pandas as pd
 from tqdm import tqdm
 
-from src.data.repository import Repository
 from src.data.kaggle_repository import KaggleRepository
+from src.data.repository import Repository
 from src.models.base_model import Model
 
 logger = logging.getLogger("KaggleModel3")
@@ -190,8 +191,8 @@ class KaggleModel3(Model):
         ]
 
         for f in mapfilters:
+            logging.info(f"n datasets before {f}: {len(ssai_par_datasets)}")
             logger.info(f"Applying: {f}")
-            ssai_par_datasets[:5]
             ssai_par_datasets = list(f(ssai_par_datasets))
 
         mapfilters = [
@@ -209,8 +210,8 @@ class KaggleModel3(Model):
         ]
 
         for f in mapfilters:
-            print(f)
-            ssai_par_datasets = f(ssai_par_datasets)
+            logging.info(f"n datasets before {f}: {len(ssai_par_datasets)}")
+            ssai_par_datasets = list(f(ssai_par_datasets))
 
         train_labels_set = set(chain(*train_labels))
         # This line is in the original notebook, but doesn't seem to do anything
@@ -224,6 +225,8 @@ class KaggleModel3(Model):
 
         self.datasets = datasets
 
+        logger.info(f"Saving {len(datasets)} datasets to {config['params']}")
+        os.makedirs(os.path.dirname(config["params"]), exist_ok=True)
         with open(config["params"], "w") as f:
             f.write("\n".join(datasets))
 
