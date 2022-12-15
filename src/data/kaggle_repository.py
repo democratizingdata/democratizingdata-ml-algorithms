@@ -38,8 +38,8 @@ class KaggleRepository(Repository):
             batch["texts"] = batch.apply(self.append_training_data, axis=1)
             yield batch
 
-    def append_training_data(self, row: pd.DataFrame) -> None:
-        return self.get_training_sample(row["Id"])
+    def append_training_data(self, row: pd.DataFrame) -> Dict[str, str]:
+        return self.get_training_sample(str(row["Id"]))
 
     def get_training_sample(self, id: str) -> Dict[str, str]:
         with open(os.path.join(self.train_files_location, (id + ".json"))) as fp:

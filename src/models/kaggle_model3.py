@@ -79,8 +79,18 @@ from pathlib import Path
 import re
 from collections import Counter, defaultdict
 from itertools import chain, filterfalse
-from typing import (Any, Callable, Dict, Iterable, Iterator, List, Optional,
-                    Set, Union)
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import pandas as pd
 from tqdm import tqdm
@@ -181,7 +191,7 @@ class KaggleModel3(Model):
             dataset_title,
             dataset_label,
             cleaned_label,
-            json_text
+            json_text,
         ) in df.iterrows():
             if idx not in samples:
                 samples[idx] = {
@@ -209,7 +219,9 @@ class KaggleModel3(Model):
 
         texts = list(chain(*train_texts))
 
-        ssai_par_datasets = KaggleModel3._tokenized_extract(texts, KaggleModel3.KEYWORDS)
+        ssai_par_datasets = KaggleModel3._tokenized_extract(
+            texts, KaggleModel3.KEYWORDS
+        )
         words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
 
         mapfilters = [
@@ -217,18 +229,20 @@ class KaggleModel3(Model):
             MapFilter_StopWords(KaggleModel3.STOPWORDS_PAR),
             MapFilter_IntroSSAI(KaggleModel3.KEYWORDS, KaggleModel3.TOKENIZE_PAT),
             MapFilter_IntroWords(),
-            MapFilter_BRLessThanTwoWords(KaggleModel3.BR_PAT, KaggleModel3.TOKENIZE_PAT),
+            MapFilter_BRLessThanTwoWords(
+                KaggleModel3.BR_PAT, KaggleModel3.TOKENIZE_PAT
+            ),
         ]
 
-        for f in mapfilters:
-            ssai_par_datasets = f(ssai_par_datasets)
+        for mapfilter in mapfilters:
+            ssai_par_datasets = mapfilter(ssai_par_datasets)
 
         mapfilters = [
             MapFilter_PartialMatchDatasets(ssai_par_datasets, KaggleModel3.BR_PAT),
             MapFilter_TrainCounts(
                 texts,
                 ssai_par_datasets,
-                KaggleModel3._get_index(texts, words),
+                KaggleModel3._get_index(texts, set(words)),
                 config["keywords"],
                 config["min_train_count"],
                 config["rel_freq_threshold"],
@@ -237,12 +251,14 @@ class KaggleModel3(Model):
             MapFilter_BRPatSub(KaggleModel3.BR_PAT),
         ]
 
-        for f in mapfilters:
-            ssai_par_datasets = f(ssai_par_datasets)
+        for mapfilter in mapfilters:
+            ssai_par_datasets = mapfilter(ssai_par_datasets)
 
         train_labels_set = set(chain(*train_labels))
         # This line is in the original notebook, but doesn't seem to do anything
-        train_datasets = [KaggleModel3.BR_PAT.sub("", ds).strip() for ds in train_labels_set]
+        train_datasets = [
+            KaggleModel3.BR_PAT.sub("", ds).strip() for ds in train_labels_set
+        ]
         train_datasets = [
             ds for ds in train_labels_set if sum(ch.islower() for ch in ds) > 0
         ]
@@ -284,7 +300,9 @@ class KaggleModel3(Model):
                         for ds in datasets:
                             if (ds in sent) and (ds not in predictions):
                                 predictions.append(ds)
-                                predictions.extend(KaggleModel3.get_parenthesis(sent, ds))
+                                predictions.extend(
+                                    KaggleModel3.get_parenthesis(sent, ds)
+                                )
             return "|".join(predictions)
 
         df["model_prediction"] = df["text"].apply(infer_sample)
@@ -330,12 +348,15 @@ class KaggleModel3(Model):
         return fabbrs
 
     @staticmethod
-    def _get_index(texts: List[str], words: List[str]) -> Dict[str, Set[int]]:
+    def _get_index(texts: List[str], words: Set[str]) -> Dict[str, Set[int]]:
         # Returns a dictionary where words are keys and values are indices
         # of documents (sentences) in texts, in which the word present
         index = defaultdict(set)
-        words = set(words)
-        words = {w for w in words if w.lower() not in KaggleModel3.PREPS and re.sub('\'', '', w).isalnum()}
+        words = {
+            w
+            for w in words
+            if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
+        }
         for n, text in tqdm(enumerate(texts), total=len(texts), desc="Indexing"):
             tokens = KaggleModel3._tokenize(text)
             for tok in tokens:
@@ -352,15 +373,15 @@ class KaggleModel3(Model):
         return re.sub("[^A-Za-z0-9]+", " ", str(text).lower()).strip()
 
     @staticmethod
-    def _tokenized_extract(texts: List[str], keywords: List[str]) -> List[str]:
+    def _tokenized_extract(texts: List[str], keywords: List[str]) -> Iterable[str]:
         # Exracts all mentions of the form
         # Xxx Xxx Keyword Xxx (XXX)
-        connection_words = {'of', 'the', 'with', 'for', 'in', 'to', 'on', 'and', 'up'}
+        connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
         datasets = []
         for text in tqdm(texts, total=len(texts), desc="Tokenizing"):
             try:
                 # Skip texts without parenthesis orXxx Xxx Keyword Xxx (XXX) keywords
-                if '(' not in text or all(not kw in text for kw in keywords):
+                if "(" not in text or all(not kw in text for kw in keywords):
                     continue
 
                 toks = list(KaggleModel3.TOKENIZE_PAT.finditer(text))
@@ -372,28 +393,34 @@ class KaggleModel3(Model):
                     is_camel = bool(KaggleModel3.CAMEL_PAT.findall(toksg[n + 1]))
                     is_caps = toksg[n + 1].isupper()
 
-                    if toksg[n] == '(' and (is_caps or is_camel) and toksg[n + 2] == ')':
+                    if (
+                        toksg[n] == "("
+                        and (is_caps or is_camel)
+                        and toksg[n + 2] == ")"
+                    ):
                         end = toks[n + 2].span()[1]
                         n_capi = 0
                         has_kw = False
-                        for tok, tokg in zip(toks[n - 1:: -1], toksg[n - 1:: -1]):
+                        for tok, tokg in zip(toks[n - 1 :: -1], toksg[n - 1 :: -1]):
                             if tokg in keywords:
                                 has_kw = True
-                            if tokg[0].isupper() and tokg.lower() not in connection_words:
+                            if (
+                                tokg[0].isupper()
+                                and tokg.lower() not in connection_words
+                            ):
                                 n_capi += 1
                                 start = tok.span()[0]
-                            elif tokg in connection_words or tokg == '-':
+                            elif tokg in connection_words or tokg == "-":
                                 continue
                             else:
                                 break
                         if n_capi > 1 and has_kw:
-                            ds = text[start: end]
+                            ds = text[start:end]
                             datasets.append(ds)
                             found = True
                             current_dss.add(ds)
             except:
                 print(text)
-
 
         return datasets
 
@@ -411,7 +438,7 @@ class MapFilter:
         self.map_f = map_f
         self.filter_f = filter_f
 
-    def __call__(self, input: Iterator[str]) -> Iterator[str]:
+    def __call__(self, input: Iterable[str]) -> Iterable[str]:
         return map(self.map_f, filter(self.filter_f, input))
 
 
@@ -525,7 +552,7 @@ class MapFilter_PartialMatchDatasets(MapFilter):
 
     def __init__(
         self,
-        dataset: List[str],
+        dataset: Iterable[str],
         br_pat: re.Pattern,
         n_most_common: Optional[int] = None,
     ):
@@ -616,21 +643,21 @@ class MapFilter_TrainCounts(MapFilter):
         index: Dict[str, Set[int]],
         kw: Union[str, List[str]],
         tokenize_pat: re.Pattern,
-    ):
+    ) -> Tuple[Dict[str, int], Dict[str, int]]:
         # Original author notes:
         # Returns N_data and N_total counts dictionary
         # (check the formulas in the first cell)
-        pred_count = Counter()
-        data_count = Counter()
+        pred_count: Dict[str, int] = Counter()
+        data_count: Dict[str, int] = Counter()
         if isinstance(kw, str):
             kw = [kw]
 
         for ds in tqdm(datasets):
             first_tok, *toks = tokenize_pat.findall(ds)
-            to_search = None
+            to_search: Set[int] = set()
             for tok in [first_tok] + toks:
                 if index.get(tok):
-                    if to_search is None:
+                    if len(to_search) == 0:
                         to_search = set(index[tok])
                     else:
                         to_search &= index[tok]
@@ -691,15 +718,13 @@ class MapFilter_BRPatSub(MapFilter):
 
 
 class Sentencizer:
-    def __init__(self,
-                 sentencize_fun: Callable,
-                 split_by_newline: bool = True) -> None:
+    def __init__(self, sentencize_fun: Callable, split_by_newline: bool = True) -> None:
         self.sentencize = sentencize_fun
         self.split_by_newline = split_by_newline
 
     def __call__(self, text: str) -> List[str]:
         if self.split_by_newline:
-            texts = text.split('\n')
+            texts = text.split("\n")
         else:
             texts = [text]
         sents = []
@@ -709,12 +734,11 @@ class Sentencizer:
 
 
 class DotSplitSentencizer(Sentencizer):
-    def __init__(self,
-                 split_by_newline: bool) -> None:
+    def __init__(self, split_by_newline: bool) -> None:
         def _sent_fun(text: str) -> List[str]:
-            return [sent.strip() for sent in text.split('.') if sent]
-        super().__init__(_sent_fun, split_by_newline)
+            return [sent.strip() for sent in text.split(".") if sent]
 
+        super().__init__(_sent_fun, split_by_newline)
 
 
 if __name__ == "__main__":

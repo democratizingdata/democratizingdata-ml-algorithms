@@ -1,13 +1,12 @@
-
 from typing import Dict, List
 
 import pandas as pd
-from thefuzz import fuzz
 from thefuzz import process
 
-from src.models.base_model import BaseModel
+from src.models.base_model import Model
 
-def calculate_statistics(row:pd.DataFrame) -> Dict[str, List[str]]:
+
+def calculate_statistics(row: pd.DataFrame) -> Dict[str, List[str]]:
     """Calculate statistics for a row of the validation set.
 
     This function is meant to be used with pandas.DataFrame.apply()
@@ -40,15 +39,14 @@ def calculate_statistics(row:pd.DataFrame) -> Dict[str, List[str]]:
                 false_positives.append(prediction)
 
     output_statistics = {
-        "labels":labels + false_positives,
-        "stats":label_values + ["FP" for _ in range(len(false_positives))],
+        "labels": labels + false_positives,
+        "stats": label_values + ["FP" for _ in range(len(false_positives))],
     }
 
     return output_statistics
 
 
-
-def evaluate(model: BaseModel, config:Dict[str, str], batch_size: int) -> None:
+def evaluate(model: Model, config: Dict[str, str], batch_size: int) -> None:
     """Evaluate a model on the validation set.
 
     Args:
@@ -59,7 +57,5 @@ def evaluate(model: BaseModel, config:Dict[str, str], batch_size: int) -> None:
     Returns:
         None
     """
-
-
 
     raise NotImplementedError()
