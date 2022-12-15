@@ -181,7 +181,6 @@ class KaggleModel3(Model):
         ) in df.iterrows():
             if idx not in samples:
                 data = repository.get_training_sample(idx)
-               
                 samples[idx] = {
                     "texts": [sec["text"] for sec in data],
                     "dataset_titles": [],
@@ -204,46 +203,11 @@ class KaggleModel3(Model):
                 texts = list(chain(*[sentencizer(text) for text in texts]))
             train_texts.append(texts)
             train_labels.append(sample_dict["dataset_labels"])
-        train_texts = list(chain(*train_texts))
 
-        # test_texts = []
-        # test_ids = []
-        # for test_file in Path(os.path.join(Model3.MODEL_DATA_DIR, "test")).glob(
-        #     "*.json"
-        # ):
-        #     idx = test_file.name.split(".")[0]
-        #     with open(test_file) as fp:
-        #         data = json.load(fp)
-        #     texts = [sec["text"] for sec in data]
-        #     if sentencizer is not None:
-        #         texts = list(chain(*[sentencizer(text) for text in texts]))
+        texts = list(chain(*train_texts))
 
-        #     test_texts.append(texts)
-        #     test_ids.append(idx)
-
-
-
-
-
-
-
-
-        # Refactor this to use batches
-
-        logger.info("Training...")
-        logger.info(f"Getting data from {repository}")
-        # train_df = next(
-        #     repository.get_training_data_dataframe(batch_size=config["batch_size"])
-        # )
-        # sentencizer = DotSplitSentencizer(True)
-        # texts = list(map(
-        #     lambda t: list(chain(*[sentencizer(_t) for _t in t])),
-        #     list(train_df["text"].values)
-        # ))
-        # train_labels = list(train_df["dataset_label"].values)
-
-        logger.info(f"Tokenizing {len(train_texts)} texts...")
-        ssai_par_datasets = KaggleModel3._tokenized_extract(train_texts, KaggleModel3.KEYWORDS)
+        # texts, train_labels = self.__get_raw_data()
+        ssai_par_datasets = KaggleModel3._tokenized_extract(texts, KaggleModel3.KEYWORDS)
         words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
 
         mapfilters = [
@@ -251,15 +215,11 @@ class KaggleModel3(Model):
             MapFilter_StopWords(KaggleModel3.STOPWORDS_PAR),
             MapFilter_IntroSSAI(KaggleModel3.KEYWORDS, KaggleModel3.TOKENIZE_PAT),
             MapFilter_IntroWords(),
-            MapFilter_BRLessThanTwoWords(
-                KaggleModel3.BR_PAT, KaggleModel3.TOKENIZE_PAT
-            ),
+            MapFilter_BRLessThanTwoWords(KaggleModel3.BR_PAT, KaggleModel3.TOKENIZE_PAT),
         ]
 
         for f in mapfilters:
-            logging.info(f"n datasets before {f}: {len(ssai_par_datasets)}")
-            logger.info(f"Applying: {f}")
-            ssai_par_datasets = list(f(ssai_par_datasets))
+            ssai_par_datasets = f(ssai_par_datasets)
 
         mapfilters = [
             MapFilter_PartialMatchDatasets(ssai_par_datasets, KaggleModel3.BR_PAT),
@@ -267,29 +227,24 @@ class KaggleModel3(Model):
                 texts,
                 ssai_par_datasets,
                 KaggleModel3._get_index(texts, words),
-                config["keyword"],  # "data"
-                config["min_train_count"],  # 2
-                config["rel_freq_threshold"],  # 0.1
+                "data",
+                2,
+                0.1,
                 KaggleModel3.TOKENIZE_PAT,
             ),
             MapFilter_BRPatSub(KaggleModel3.BR_PAT),
         ]
 
         for f in mapfilters:
-            logging.info(f"n datasets before {f}: {len(ssai_par_datasets)}")
-            ssai_par_datasets = list(f(ssai_par_datasets))
+            ssai_par_datasets = f(ssai_par_datasets)
 
         train_labels_set = set(chain(*train_labels))
         # This line is in the original notebook, but doesn't seem to do anything
-        train_datasets = [
-            KaggleModel3.BR_PAT.sub("", ds).strip() for ds in train_labels_set
-        ]
+        train_datasets = [KaggleModel3.BR_PAT.sub("", ds).strip() for ds in train_labels_set]
         train_datasets = [
             ds for ds in train_labels_set if sum(ch.islower() for ch in ds) > 0
         ]
         datasets = set(ssai_par_datasets) | set(train_datasets)
-
-        self.datasets = datasets
 
         logger.info(f"Saving {len(datasets)} datasets to {config['params']}")
         os.makedirs(os.path.dirname(config["params"]), exist_ok=True)
@@ -347,16 +302,12 @@ class KaggleModel3(Model):
         # Returns a dictionary where words are keys and values are indices
         # of documents (sentences) in texts, in which the word present
         index = defaultdict(set)
-        word_set = set(words)
-        word_set = {
-            w
-            for w in word_set
-            if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
-        }
-        for n, text in enumerate(texts):
+        words = set(words)
+        words = {w for w in words if w.lower() not in KaggleModel3.PREPS and re.sub('\'', '', w).isalnum()}
+        for n, text in tqdm(enumerate(texts), total=len(texts)):
             tokens = KaggleModel3._tokenize(text)
             for tok in tokens:
-                if tok in word_set:
+                if tok in words:
                     index[tok].add(n)
         return index
 
@@ -388,7 +339,7 @@ class KaggleModel3(Model):
                 for n in range(1, len(toks) - 2):
                     is_camel = bool(KaggleModel3.CAMEL_PAT.findall(toksg[n + 1]))
                     is_caps = toksg[n + 1].isupper()
-                    
+
                     if toksg[n] == '(' and (is_caps or is_camel) and toksg[n + 2] == ')':
                         end = toks[n + 2].span()[1]
                         n_capi = 0
@@ -642,26 +593,19 @@ class MapFilter_TrainCounts(MapFilter):
         if isinstance(kw, str):
             kw = [kw]
 
-        for ds in datasets:
-            # REFACTOR: this unpacks the first token and the rest of the tokens
-            # and then combines them into a list???
-            # first_tok, *toks = tokenize_pat.findall(ds)
-            toks = tokenize_pat.findall(ds)
+        for ds in tqdm(datasets):
+            first_tok, *toks = tokenize_pat.findall(ds)
             to_search = None
-            # for tok in [first_tok] + toks:
-            for tok in toks:
+            for tok in [first_tok] + toks:
                 if index.get(tok):
                     if to_search is None:
-                        # to_search = set(index[tok])
-                        to_search = index[tok]
+                        to_search = set(index[tok])
                     else:
                         to_search &= index[tok]
+                else:
+                    pass
             for doc_idx in to_search:
                 text = texts[doc_idx]
-                # Here we're going to check if the dataset mention exists in the
-                # text and if it does we increment the dataset count and if the
-                # kw ("data" in the original author's setup) is in the text we
-                # increment the data count.
                 if ds in text:
                     pred_count[ds] += 1
                     data_count[ds] += int(any(w in text.lower() for w in kw))
