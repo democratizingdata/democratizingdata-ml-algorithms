@@ -72,8 +72,10 @@
 # where N_{data}(str) is the number of times the str occures with data
 # word (parenthesis are dropped) and N_{total}(str) is the total number
 # of times str present in texts. All mentions with  F_d<0.1  are dropped.
+import json
 import logging
 import os
+from pathlib import Path
 import re
 from collections import Counter, defaultdict
 from itertools import chain, filterfalse
@@ -166,18 +168,82 @@ class KaggleModel3(Model):
             None
         """
 
+        sentencizer = DotSplitSentencizer(True)
+        df = repository.get_training_data_dataframe(1)
+
+        samples = {}
+        for _, (
+            idx,
+            pub_title,
+            dataset_title,
+            dataset_label,
+            cleaned_label,
+        ) in df.iterrows():
+            if idx not in samples:
+                data = repository.get_training_sample(idx)
+               
+                samples[idx] = {
+                    "texts": [sec["text"] for sec in data],
+                    "dataset_titles": [],
+                    "dataset_labels": [],
+                    "cleaned_labels": [],
+                    "pub_title": pub_title,
+                    "idx": idx,
+                }
+            samples[idx]["dataset_titles"].append(dataset_title)
+            samples[idx]["dataset_labels"].append(dataset_label)
+            samples[idx]["cleaned_labels"].append(cleaned_label)
+
+        train_ids = []
+        train_texts = []
+        train_labels = []
+        for sample_dict in samples.values():
+            train_ids.append(sample_dict["idx"])
+            texts = sample_dict["texts"]
+            if sentencizer is not None:
+                texts = list(chain(*[sentencizer(text) for text in texts]))
+            train_texts.append(texts)
+            train_labels.append(sample_dict["dataset_labels"])
+        train_texts = list(chain(*train_texts))
+
+        # test_texts = []
+        # test_ids = []
+        # for test_file in Path(os.path.join(Model3.MODEL_DATA_DIR, "test")).glob(
+        #     "*.json"
+        # ):
+        #     idx = test_file.name.split(".")[0]
+        #     with open(test_file) as fp:
+        #         data = json.load(fp)
+        #     texts = [sec["text"] for sec in data]
+        #     if sentencizer is not None:
+        #         texts = list(chain(*[sentencizer(text) for text in texts]))
+
+        #     test_texts.append(texts)
+        #     test_ids.append(idx)
+
+
+
+
+
+
+
+
         # Refactor this to use batches
 
         logger.info("Training...")
         logger.info(f"Getting data from {repository}")
-        train_df = next(
-            repository.get_training_data_dataframe(batch_size=config["batch_size"])
-        )
-        texts = list(train_df["text"].values)
-        train_labels = list(train_df["dataset_label"].values)
+        # train_df = next(
+        #     repository.get_training_data_dataframe(batch_size=config["batch_size"])
+        # )
+        # sentencizer = DotSplitSentencizer(True)
+        # texts = list(map(
+        #     lambda t: list(chain(*[sentencizer(_t) for _t in t])),
+        #     list(train_df["text"].values)
+        # ))
+        # train_labels = list(train_df["dataset_label"].values)
 
-        logger.info(f"Tokenizing {len(texts)} texts...")
-        ssai_par_datasets = KaggleModel3._tokenized_extract(texts, train_labels)
+        logger.info(f"Tokenizing {len(train_texts)} texts...")
+        ssai_par_datasets = KaggleModel3._tokenized_extract(train_texts, KaggleModel3.KEYWORDS)
         words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
 
         mapfilters = [
@@ -306,43 +372,45 @@ class KaggleModel3(Model):
     def _tokenized_extract(texts: List[str], keywords: List[str]) -> List[str]:
         # Exracts all mentions of the form
         # Xxx Xxx Keyword Xxx (XXX)
-        connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
+        connection_words = {'of', 'the', 'with', 'for', 'in', 'to', 'on', 'and', 'up'}
         datasets = []
-        for text in tqdm(texts, desc="Tokenizing"):
-            # ryanhausen: the code below was wrapped in try/except block, not sure why...
-            # Skip texts without parenthesis or Xxx Xxx Keyword Xxx (XXX) keywords
-            if "(" not in text or all(not kw in text for kw in keywords):
-                continue
+        for text in tqdm(texts):
+            try:
+                # Skip texts without parenthesis orXxx Xxx Keyword Xxx (XXX) keywords
+                if '(' not in text or all(not kw in text for kw in keywords):
+                    continue
 
-            toks = list(KaggleModel3.TOKENIZE_PAT.finditer(text))
-            toksg = [tok.group() for tok in toks]
+                toks = list(KaggleModel3.TOKENIZE_PAT.finditer(text))
+                toksg = [tok.group() for tok in toks]
 
-            # found = False # ryanhausen: this is set, but never used
-            current_dss = set()
-            for n in range(1, len(toks) - 2):
-                is_camel = bool(KaggleModel3.CAMEL_PAT.findall(toksg[n + 1]))
-                is_caps = toksg[n + 1].isupper()
+                found = False
+                current_dss = set()
+                for n in range(1, len(toks) - 2):
+                    is_camel = bool(KaggleModel3.CAMEL_PAT.findall(toksg[n + 1]))
+                    is_caps = toksg[n + 1].isupper()
+                    
+                    if toksg[n] == '(' and (is_caps or is_camel) and toksg[n + 2] == ')':
+                        end = toks[n + 2].span()[1]
+                        n_capi = 0
+                        has_kw = False
+                        for tok, tokg in zip(toks[n - 1:: -1], toksg[n - 1:: -1]):
+                            if tokg in keywords:
+                                has_kw = True
+                            if tokg[0].isupper() and tokg.lower() not in connection_words:
+                                n_capi += 1
+                                start = tok.span()[0]
+                            elif tokg in connection_words or tokg == '-':
+                                continue
+                            else:
+                                break
+                        if n_capi > 1 and has_kw:
+                            ds = text[start: end]
+                            datasets.append(ds)
+                            found = True
+                            current_dss.add(ds)
+            except:
+                print(text)
 
-                if toksg[n] == "(" and (is_caps or is_camel) and toksg[n + 2] == ")":
-                    end = toks[n + 2].span()[1]
-                    n_capi = 0
-                    has_kw = False
-                    start = 0
-                    for tok, tokg in zip(toks[n - 1 :: -1], toksg[n - 1 :: -1]):
-                        if tokg in keywords:
-                            has_kw = True
-                        if tokg[0].isupper() and tokg.lower() not in connection_words:
-                            n_capi += 1
-                            start = tok.span()[0]
-                        elif tokg in connection_words or tokg == "-":
-                            continue
-                        else:
-                            break
-                    if n_capi > 1 and has_kw:
-                        ds = text[start:end]
-                        datasets.append(ds)
-                        # found = True
-                        current_dss.add(ds)
 
         return datasets
 
@@ -644,6 +712,33 @@ class MapFilter_BRPatSub(MapFilter):
 
     def __repr__(self) -> str:
         return f"MapFilter_BRPatSub"
+
+
+class Sentencizer:
+    def __init__(self,
+                 sentencize_fun: Callable,
+                 split_by_newline: bool = True) -> None:
+        self.sentencize = sentencize_fun
+        self.split_by_newline = split_by_newline
+
+    def __call__(self, text: str) -> List[str]:
+        if self.split_by_newline:
+            texts = text.split('\n')
+        else:
+            texts = [text]
+        sents = []
+        for text in texts:
+            sents.extend(self.sentencize(text))
+        return sents
+
+
+class DotSplitSentencizer(Sentencizer):
+    def __init__(self,
+                 split_by_newline: bool) -> None:
+        def _sent_fun(text: str) -> List[str]:
+            return [sent.strip() for sent in text.split('.') if sent]
+        super().__init__(_sent_fun, split_by_newline)
+
 
 
 if __name__ == "__main__":

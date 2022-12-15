@@ -15,7 +15,7 @@ class KaggleRepository(Repository):
         )
         self.train_files_location = os.path.join(self.local, "../../data/kaggle/train")
         self.train_dataframe_location = os.path.join(
-            self.local, "../../data/kaggle/train_dataframe.csv"
+            self.local, "../../data/kaggle/train_dataframe.pkl"
         )
         assert os.path.exists(
             self.train_labels_location
@@ -30,34 +30,16 @@ class KaggleRepository(Repository):
     def get_test_data_raw(self, batch_size: int) -> Iterator[Tuple[str, str]]:
         raise NotImplementedError()
 
+    def get_vaidation_data_frame(self, batch_size: int) -> Iterator[Tuple[str, str]]:
+        raise NotImplementedError()
+
     def get_training_data_dataframe(self, batch_size: int) -> Iterator[pd.DataFrame]:
+        return pd.read_csv(self.train_labels_location)
 
-        if os.path.exists(self.train_dataframe_location):
-            df = pd.read_csv(self.train_dataframe_location)
-        else:
-
-            df_labels = pd.read_csv(self.train_labels_location)
-
-            text_dict: Dict[str, List[str]] = dict(Id=[], text=[])
-            for fname in os.listdir(self.train_files_location):
-                with open(os.path.join(self.train_files_location, fname), "r") as f:
-                    json_data = json.load(f)
-                    text_dict["text"].append(
-                        " ".join(
-                            [l["text"].replace("\n", "").strip() for l in json_data]
-                        )
-                    )
-                    text_dict["Id"].append(os.path.basename(f.name).split(".")[0])
-
-            df_texts = pd.DataFrame(text_dict)
-            df = pd.merge(df_labels, df_texts, on="Id")
-            df.to_csv(self.train_dataframe_location, index=False)
-
-        return iter(
-            [
-                df.loc[:, ["Id", "text", "dataset_label"]],
-            ]
-        )
+    def get_training_sample(self, id: str) -> Dict[str, str]:
+        with open(os.path.join(self.train_files_location, (id + ".json"))) as fp:
+            data = json.load(fp)
+        return data
 
     def get_test_data_dataframe(self, batch_size: int) -> Iterator[pd.DataFrame]:
         raise NotImplementedError()
