@@ -34,7 +34,12 @@ class KaggleRepository(Repository):
         raise NotImplementedError()
 
     def get_training_data_dataframe(self, batch_size: int) -> Iterator[pd.DataFrame]:
-        return pd.read_csv(self.train_labels_location)
+        for batch in pd.read_csv(self.train_labels_location, chunksize=batch_size):
+            batch["texts"] = batch.apply(self.append_training_data, axis=1)
+            yield batch
+
+    def append_training_data(self, row: pd.DataFrame) -> None:
+        return self.get_training_sample(row["Id"])
 
     def get_training_sample(self, id: str) -> Dict[str, str]:
         with open(os.path.join(self.train_files_location, (id + ".json"))) as fp:
@@ -50,5 +55,5 @@ class KaggleRepository(Repository):
 
 if __name__ == "__main__":
     repo = KaggleRepository()
-    df = next(repo.get_training_data_dataframe(1))
-    print(df)
+    df = repo.get_training_data_dataframe(1)
+    print(type(df))

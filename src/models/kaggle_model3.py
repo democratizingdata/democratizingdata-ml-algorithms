@@ -169,7 +169,10 @@ class KaggleModel3(Model):
         """
 
         sentencizer = DotSplitSentencizer(True)
-        df = repository.get_training_data_dataframe(1)
+        # TODO: this currently only works with the KaggleRepository and pulls
+        # the whole training set into memory. This should be changed to work
+        # with on batches.
+        df = next(repository.get_training_data_dataframe(10000000000))
 
         samples = {}
         for _, (
@@ -178,11 +181,11 @@ class KaggleModel3(Model):
             dataset_title,
             dataset_label,
             cleaned_label,
+            json_text
         ) in df.iterrows():
             if idx not in samples:
-                data = repository.get_training_sample(idx)
                 samples[idx] = {
-                    "texts": [sec["text"] for sec in data],
+                    "texts": [sec["text"] for sec in json_text],
                     "dataset_titles": [],
                     "dataset_labels": [],
                     "cleaned_labels": [],
@@ -206,7 +209,6 @@ class KaggleModel3(Model):
 
         texts = list(chain(*train_texts))
 
-        # texts, train_labels = self.__get_raw_data()
         ssai_par_datasets = KaggleModel3._tokenized_extract(texts, KaggleModel3.KEYWORDS)
         words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
 
@@ -227,9 +229,9 @@ class KaggleModel3(Model):
                 texts,
                 ssai_par_datasets,
                 KaggleModel3._get_index(texts, words),
-                "data",
-                2,
-                0.1,
+                config["keywords"],
+                config["min_train_count"],
+                config["rel_freq_threshold"],
                 KaggleModel3.TOKENIZE_PAT,
             ),
             MapFilter_BRPatSub(KaggleModel3.BR_PAT),
@@ -257,7 +259,37 @@ class KaggleModel3(Model):
     def inference_dataframe(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
-        raise NotImplementedError()
+        """Inference method for the KaggleModel3
+
+        Args:
+            config (Dict[str, Any]): Configuration dictionary
+            df (pd.DataFrame): Dataframe containing the texts to be classified
+                               should have columns "Id", "text"
+
+
+        Returns:
+            pd.DataFrame: Dataframe with an additional column "model_prediction"
+                          containing the inferred datasets
+        """
+
+        with open(config["params"]) as f:
+            datasets = set([l.strip() for l in f.readlines()])
+
+        def infer_sample(text: List[Dict[str, str]]) -> str:
+            predictions = []
+            for section in text:
+                section_text = section["text"]
+                for paragraph in section_text.split("\n"):
+                    for sent in re.split("[\.]", paragraph):
+                        for ds in datasets:
+                            if (ds in sent) and (ds not in predictions):
+                                predictions.append(ds)
+                                predictions.extend(KaggleModel3.get_parenthesis(sent, ds))
+            return "|".join(predictions)
+
+        df["model_prediction"] = df["text"].apply(infer_sample)
+
+        return df
 
     @staticmethod
     def get_parenthesis(text: str, dataset: str) -> List[str]:
@@ -304,7 +336,7 @@ class KaggleModel3(Model):
         index = defaultdict(set)
         words = set(words)
         words = {w for w in words if w.lower() not in KaggleModel3.PREPS and re.sub('\'', '', w).isalnum()}
-        for n, text in tqdm(enumerate(texts), total=len(texts)):
+        for n, text in tqdm(enumerate(texts), total=len(texts), desc="Indexing"):
             tokens = KaggleModel3._tokenize(text)
             for tok in tokens:
                 if tok in words:
@@ -325,7 +357,7 @@ class KaggleModel3(Model):
         # Xxx Xxx Keyword Xxx (XXX)
         connection_words = {'of', 'the', 'with', 'for', 'in', 'to', 'on', 'and', 'up'}
         datasets = []
-        for text in tqdm(texts):
+        for text in tqdm(texts, total=len(texts), desc="Tokenizing"):
             try:
                 # Skip texts without parenthesis orXxx Xxx Keyword Xxx (XXX) keywords
                 if '(' not in text or all(not kw in text for kw in keywords):
@@ -379,7 +411,7 @@ class MapFilter:
         self.map_f = map_f
         self.filter_f = filter_f
 
-    def __call__(self, input: Iterator) -> Iterator:
+    def __call__(self, input: Iterator[str]) -> Iterator[str]:
         return map(self.map_f, filter(self.filter_f, input))
 
 
@@ -752,7 +784,7 @@ if __name__ == "__main__":
 
     config = dict(
         params="models/kagglemodel3/params.txt",
-        keyword=["data"],
+        keywords=["data"],
         min_train_count=2,
         rel_freq_threshold=0.1,
         batch_size=-1,
