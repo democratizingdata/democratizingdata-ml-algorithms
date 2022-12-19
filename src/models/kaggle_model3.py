@@ -807,7 +807,7 @@ if __name__ == "__main__":
     )
 
     config = dict(
-        params="models/kagglemodel3/params.txt",
+        params="models/kagglemodel3/baseline/params.txt",
         keywords=["data"],
         min_train_count=2,
         rel_freq_threshold=0.1,
