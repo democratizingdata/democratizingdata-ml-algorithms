@@ -46,7 +46,9 @@ def calculate_statistics(row: pd.DataFrame) -> Dict[str, List[str]]:
     return output_statistics
 
 
-def evaluate(model: Model, config: Dict[str, str], batch_size: int) -> None:
+def evaluate_kaggle_private(
+    model: Model, config: Dict[str, str], batch_size: int
+) -> pd.DataFrame:
     """Evaluate a model on the validation set.
 
     Args:

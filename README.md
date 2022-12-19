@@ -17,7 +17,9 @@ here. Currently, the files to train Kaggle model 2 are there.
 - `/models` is for storing trained model params. For example, the 3rd place
 Kaggle model (`src/models/kagglemodel3.py`) builds a list of datasets by
 extracting entities from the training data with some rules. These extracted
-entities are saved in `/models/kagglemodel3/params.txt`. Saved model weights should be saved in directory with the same name as the model's python file.
+entities are saved in `/models/kagglemodel3/baseline/params.txt`. Saved model
+weights should be saved in directory with the same name as the model's python
+file.
 
 - `/notebooks`contains notebooks for data model exploration
 

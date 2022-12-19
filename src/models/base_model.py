@@ -1,4 +1,6 @@
+import dataclasses as dc
 from typing import Any, Dict
+
 import pandas as pd
 
 from src.data.repository import Repository
@@ -15,3 +17,14 @@ class Model:
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
         raise NotImplementedError()
+
+
+@dc.dataclass
+class Hyperparameters:
+    pretrained_model: str
+    save_model: bool
+    model_path: str
+    optimizer: Any
+    learning_rate: float
+    num_epochs: int
+    batch_size: int
