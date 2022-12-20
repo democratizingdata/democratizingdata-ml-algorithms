@@ -22,12 +22,14 @@ from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTok
 from src.data.repository import Repository
 from src.models.base_model import Hyperparamters, Model
 
+
 @dc.dataclass
 class Model2Hyperparameters(Hyperparamters):
     accum_for: int = 1
     max_coree: int = 24
     max_seq_len: int = 128
     use_amp: bool = True
+
 
 class KaggleModel2(Model):
     def __init__(self, logger):
@@ -67,7 +69,7 @@ class KaggleModel2(Model):
 
         model.train()
         iter = 0
-        accum_for:int = config["accum_for"]
+        accum_for: int = config["accum_for"]
         running_total_loss = 0  # Display running average of loss across epoch
         with trange(
             0,
@@ -179,8 +181,6 @@ class KaggleModel2(Model):
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
         raise NotImplementedError()
-
-
 
 
 if __name__ == "__main__":
