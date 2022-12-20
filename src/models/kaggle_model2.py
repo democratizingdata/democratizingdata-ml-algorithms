@@ -20,13 +20,13 @@ from tqdm import trange
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
 
 from src.data.repository import Repository
-from src.models.base_model import Hyperparamters, Model
+from src.models.base_model import Hyperparameters, Model
 
 
 @dc.dataclass
-class Model2Hyperparameters(Hyperparamters):
+class Model2Hyperparameters(Hyperparameters):
     accum_for: int = 1
-    max_coree: int = 24
+    max_cores: int = 24
     max_seq_len: int = 128
     use_amp: bool = True
 
@@ -35,29 +35,29 @@ class KaggleModel2(Model):
     def __init__(self, logger):
         self.logger = logger
 
-    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
+    def train(self, repository: Repository, config: Model2Hyperparameters) -> None:
         pretrained_config = AutoConfig.from_pretrained(
-            config["pretrained_model"], num_labels=2
+            config.pretrained_model, num_labels=2
         )
 
         model = AutoModelForSequenceClassification.from_pretrained(
-            config["pretrained_model"], config=pretrained_config
+            config.pretrained_model, config=pretrained_config
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
+        tokenizer = AutoTokenizer.from_pretrained(config.pretrained_model)
 
-        opt = config["optimizer"](model.parameters(), lr=config["learning_rate"])
+        opt = config.optimizer(model.parameters(), lr=config.learning_rate)
 
         # get all samples
         train_samples = next(repository.get_training_data_dataframe(1000000))
         test_samples = next(repository.get_test_data_dataframe(1000000))
 
-        for epoch in trange(config["num_epochs"]):
+        for epoch in trange(config.num_epochs):
             self._train_epoch(model, tokenizer, train_samples, opt, self.logger, epoch)
 
             self._test_epoch(model, tokenizer, test_samples, self.logger, epoch)
-            if config["save_model"]:
-                model.save_pretrained(config["model_path"])
+            if config.save_model:
+                model.save_pretrained(config.model_path)
 
     def _train_epoch(self, model, tokenizer, samples, opt, logger, curr_epoch) -> None:
 
@@ -69,18 +69,18 @@ class KaggleModel2(Model):
 
         model.train()
         iter = 0
-        accum_for: int = config["accum_for"]
+        accum_for: int = config.accum_for
         running_total_loss = 0  # Display running average of loss across epoch
         with trange(
             0,
             len(train_indices),
-            config["batch_size"],
+            config.batch_size,
             desc="Epoch {}".format(curr_epoch),
         ) as t:
             for batch_idx_start in t:
                 iter += 1
                 batch_idx_end = min(
-                    batch_idx_start + config["batch_size"], len(train_indices)
+                    batch_idx_start + config.batch_size, len(train_indices)
                 )
 
                 current_batch = list(train_strings[batch_idx_start:batch_idx_end])
@@ -103,7 +103,7 @@ class KaggleModel2(Model):
                     **batch_features, labels=batch_labels, return_dict=True
                 )
                 loss = model_outputs["loss"]
-                loss = loss / config["accum_for"]  # Normalize if we're doing GA
+                loss = loss / config.accum_for  # Normalize if we're doing GA
 
                 # if config["use_amp"]:
                 #     with amp.scale_loss(loss, opt) as scaled_loss:
@@ -129,13 +129,13 @@ class KaggleModel2(Model):
         with trange(
             0,
             len(test_strings),
-            config["batch_size"],
+            config.batch_size,
             desc="Epoch {}".format(curr_epoch),
         ) as t:
             for batch_idx_start in t:
                 iter += 1
                 batch_idx_end = min(
-                    batch_idx_start + config["batch_size"], len(test_strings)
+                    batch_idx_start + config.batch_size, len(test_strings)
                 )
 
                 current_batch = list(test_strings[batch_idx_start:batch_idx_end])
@@ -158,7 +158,7 @@ class KaggleModel2(Model):
                     **batch_features, labels=batch_labels, return_dict=True
                 )
                 loss = model_outputs["loss"]
-                loss = loss / config["accum_for"]  # Normalize if we're doing GA
+                loss = loss / config.accum_for  # Normalize if we're doing GA
 
                 # if config["use_amp"]:
                 #     with amp.scale_loss(loss, opt) as scaled_loss:
@@ -184,7 +184,7 @@ class KaggleModel2(Model):
 
 
 if __name__ == "__main__":
-    config = dict(
+    config = Model2Hyperparameters(
         use_amp=True,
         pretrained_model="roberta-base",
         save_model=True,
@@ -195,8 +195,8 @@ if __name__ == "__main__":
         batch_size=32,
         accum_for=1,
         learning_rate=1e-5,
+        optimizer=torch.optim.Adam,
     )
-    config["optimizer"] = torch.optim.Adam
 
     from src.data.entity_repository import EntityRepository
 

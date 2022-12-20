@@ -100,7 +100,7 @@ def best_candidates(sentence: str) -> Iterator[Candidate]:
                 yield new_candidate
 
 
-def conditions(candidate: Candidate) -> bool:
+def conditions(candidate: str) -> bool:
     """
     Based on Schwartz&Hearst
 
@@ -176,14 +176,14 @@ def get_definition(candidate: Candidate, sentence: str):
         # We found enough keys in the definition so return the definition as a definition candidate
         start = len(" ".join(tokens[:start_index]))
         stop = candidate.start - 1
-        candidate = sentence[start:stop]
+        candidate_str = sentence[start:stop]
 
         # Remove whitespace
-        start = start + len(candidate) - len(candidate.lstrip())
-        stop = stop - len(candidate) + len(candidate.rstrip())
-        candidate = sentence[start:stop]
+        start = start + len(candidate_str) - len(candidate_str.lstrip())
+        stop = stop - len(candidate_str) + len(candidate_str.rstrip())
+        candidate_str = sentence[start:stop]
 
-        new_candidate = Candidate(candidate)
+        new_candidate = Candidate(candidate_str)
         new_candidate.set_position(start, stop)
         return new_candidate
 
@@ -268,12 +268,12 @@ def select_definition(definition: Candidate, abbrev: str) -> Candidate:
 
 
 def extract_abbreviation_definition_pairs(
-    file_path: str = None,
-    doc_text: str = None,
+    file_path: str = "",  # original set to None, bool("")==False and makes mypy happy
+    doc_text: str = "",  # original set to None, bool("")==False and makes mypy happy
     most_common_definition: bool = False,
     first_definition=False,
 ) -> Dict[str, str]:
-    abbrev_map = dict()
+    abbrev_map: Dict[str, str] = dict()
     list_abbrev_map = defaultdict(list)
     counter_abbrev_map = dict()
     omit = 0
@@ -332,11 +332,11 @@ def extract_abbreviation_definition_pairs(
         if most_common_definition:
             # Return the most common definition for each term
             for k, v in list_abbrev_map.items():
-                counter_abbrev_map[k] = Counter(v).most_common(1)[0][0]
+                counter_abbrev_map[str(k)] = Counter(v).most_common(1)[0][0]
         else:
             # Return the first definition for each term
             for k, v in list_abbrev_map.items():
-                counter_abbrev_map[k] = v[0]
+                counter_abbrev_map[str(k)] = v[0]
         return counter_abbrev_map
 
     # Or return the last encountered definition for each term
@@ -344,8 +344,6 @@ def extract_abbreviation_definition_pairs(
 
 
 if __name__ == "__main__":
-    print(
-        extract_abbreviation_definition_pairs(
-            doc_text="The National Institutes of Health (NIH) is a biomedical research facility in the United States."
-        )
-    )
+    assert extract_abbreviation_definition_pairs(
+        doc_text="The National Institutes of Health (NIH) is a biomedical research facility in the United States."
+    ) == {"NIH": "National Institutes of Health"}
