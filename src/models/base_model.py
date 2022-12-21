@@ -15,6 +15,7 @@ class Hyperparameters:
     learning_rate: float
     num_epochs: int
     batch_size: int
+    training_logger: Any  # this should be comet, wandb, tensorboard, etc.
 
 
 class Model:

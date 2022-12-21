@@ -1,11 +1,13 @@
 # The Schwartz-Hearst algorithm for extracting identifying acronyms from text
 # implementation from the submission of model 2
 
-
+import logging
 from collections import Counter, defaultdict
 from typing import Dict, Iterator
 
 import regex
+
+logger = logging.getLogger("SchwatzHearst")
 
 
 class Candidate(str):
@@ -299,7 +301,7 @@ def extract_abbreviation_definition_pairs(
                 try:
                     definition = get_definition(candidate, clean_sentence)
                 except (ValueError, IndexError) as e:
-                    print(
+                    logger.info(
                         "{} Omitting candidate {}. Reason: {}".format(
                             i, candidate, e.args[0]
                         )
@@ -309,7 +311,7 @@ def extract_abbreviation_definition_pairs(
                     try:
                         definition = select_definition(definition, candidate)
                     except (ValueError, IndexError) as e:
-                        print(
+                        logger.info(
                             "{} Omitting definition {} for candidate {}. Reason: {}".format(
                                 i, definition, candidate, e.args[0]
                             )
@@ -324,8 +326,10 @@ def extract_abbreviation_definition_pairs(
                             abbrev_map[candidate] = definition
                         written += 1
         except (ValueError, IndexError) as e:
-            print("{} Error processing sentence {}: {}".format(i, sentence, e.args[0]))
-    print("{} abbreviations detected and kept ({} omitted)".format(written, omit))
+            logger.info(
+                "{} Error processing sentence {}: {}".format(i, sentence, e.args[0])
+            )
+    logger.info("{} abbreviations detected and kept ({} omitted)".format(written, omit))
 
     # Return most common definition for each term
     if collect_definitions:

@@ -8,6 +8,7 @@
 # This model is a baseline model that uses the original labels from the Kaggle
 # competition. It uses pytorch and the transformers library.
 import dataclasses as dc
+import logging
 from random import shuffle
 from typing import Any, Dict
 
@@ -17,10 +18,12 @@ import torch
 # from apex import amp
 # from apex.optimizers import FusedAdam
 from tqdm import trange
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
 
 from src.data.repository import Repository
 from src.models.base_model import Hyperparameters, Model
+
+logger = logging.getLogger("KaggleModel2")
 
 
 @dc.dataclass
@@ -32,10 +35,7 @@ class Model2Hyperparameters(Hyperparameters):
 
 
 class KaggleModel2(Model):
-    def __init__(self, logger):
-        self.logger = logger
-
-    def train(self, repository: Repository, config: Model2Hyperparameters) -> None:
+    def train(self, repository: Repository, config: Model2Hyperparameters) -> None:  # type: ignore[override]
         pretrained_config = AutoConfig.from_pretrained(
             config.pretrained_model, num_labels=2
         )
@@ -200,5 +200,6 @@ if __name__ == "__main__":
 
     from src.data.entity_repository import EntityRepository
 
-    model = KaggleModel2(logger=None)
+    logging.basicConfig(level=logging.INFO)
+    model = KaggleModel2()
     model.train(EntityRepository(), config)

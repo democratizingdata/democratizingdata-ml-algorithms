@@ -97,9 +97,15 @@ from tqdm import tqdm
 
 from src.data.kaggle_repository import KaggleRepository
 from src.data.repository import Repository
-from src.models.base_model import Model
+from src.models.base_model import Hyperparameters, Model
 
 logger = logging.getLogger("KaggleModel3")
+
+
+class Model3Hyperparameters(Hyperparameters):
+    keywords: List[str] = ["data"]
+    min_train_count: int = 2
+    rel_freq_threshold: float = 0.1
 
 
 class KaggleModel3(Model):
@@ -167,8 +173,8 @@ class KaggleModel3(Model):
     )  # matches: whitespace, open bracket, anything, close bracket
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
-    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
-        """Extracts dataset mentions and saves them to config["params"]
+    def train(self, repository: Repository, config: Model3Hyperparameters) -> None:
+        """Extracts dataset mentions and saves them to config.model_path
 
         Args:
             repository (Repository): Repository object
@@ -243,9 +249,9 @@ class KaggleModel3(Model):
                 texts,
                 ssai_par_datasets,
                 KaggleModel3._get_index(texts, set(words)),
-                config["keywords"],
-                config["min_train_count"],
-                config["rel_freq_threshold"],
+                config.keywords,
+                config.min_train_count,
+                config.rel_freq_threshold,
                 KaggleModel3.TOKENIZE_PAT,
             ),
             MapFilter_BRPatSub(KaggleModel3.BR_PAT),
@@ -264,9 +270,9 @@ class KaggleModel3(Model):
         ]
         datasets = set(ssai_par_datasets) | set(train_datasets)
 
-        logger.info(f"Saving {len(datasets)} datasets to {config['params']}")
-        os.makedirs(os.path.dirname(config["params"]), exist_ok=True)
-        with open(config["params"], "w") as f:
+        logger.info(f"Saving {len(datasets)} datasets to {config.model_path}")
+        os.makedirs(os.path.dirname(config.model_path), exist_ok=True)
+        with open(config.model_path, "w") as f:
             f.write("\n".join(datasets))
 
     def inference_string(self, config: Dict[str, Any], text: str) -> str:
@@ -806,12 +812,13 @@ if __name__ == "__main__":
         Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
     )
 
-    config = dict(
-        params="models/kagglemodel3/baseline/params.txt",
+    config = Model3Hyperparameters(
+        model_path="models/kagglemodel3/baseline/params.txt",
         keywords=["data"],
         min_train_count=2,
         rel_freq_threshold=0.1,
         batch_size=-1,
     )
+
     logging.basicConfig(level=logging.INFO)
     KaggleModel3().train(KaggleRepository(), config)
