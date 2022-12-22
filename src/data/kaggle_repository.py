@@ -30,8 +30,10 @@ class KaggleRepository(Repository):
     def get_test_data_raw(self, batch_size: int) -> Iterator[Tuple[str, str]]:
         raise NotImplementedError()
 
-    def get_vaidation_data_frame(self, batch_size: int) -> Iterator[Tuple[str, str]]:
-        raise NotImplementedError()
+    def get_validation_dataframe(self, batch_size: int) -> Iterator[Tuple[str, str]]:
+        return pd.read_pickle(os.path.join(
+            self.local, "../../data/kaggle/validation_dataframe.pkl"
+        ))
 
     def get_training_data_dataframe(self, batch_size: int) -> Iterator[pd.DataFrame]:
         for batch in pd.read_csv(self.train_labels_location, chunksize=batch_size):
