@@ -33,6 +33,6 @@ class SchwartzHearstModel(Model):
 
             return "|".join(predictions)
 
-        df["model_prediction"] = df["text"].apply(infer_sample)
+        df["model_prediction"] = df["text"].progress_apply(infer_sample)
 
         return df
