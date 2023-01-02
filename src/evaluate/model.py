@@ -2,10 +2,10 @@ import dataclasses as dc
 from functools import partial
 from itertools import chain
 from time import time
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
-from thefuzz import process
+from thefuzz import fuzz, process
 from tqdm import tqdm
 
 from src.data.kaggle_repository import KaggleRepository
@@ -39,11 +39,41 @@ class ModelEvaluation:
         """
 
 
+def retrieve_tpfpfn(
+    candidate_list: List[str],
+    target_list: List[str],
+    scorer: Optional[Callable[[str, str], int]] = None,
+    processor: Optional[Callable[[str], str]] = None,
+    min_score: int = 90,
+    top_n: int = 5,
+) -> Tuple[List[str], List[str], List[str]]:
+    """Calculate true positives, false positives, and false negatives."""
+
+    true_positives = []
+    false_negatives = list(target_list)
+    false_positives = list(candidate_list)
+    for target in target_list:
+        extracted = process.extract(
+            target, candidate_list, processor=processor, scorer=scorer, limit=top_n
+        )
+        for candidate, _ in filter(lambda x: x[1] > min_score, extracted):
+            if candidate in false_positives:
+                false_positives.remove(candidate)
+            if target not in true_positives:
+                true_positives.append(target)
+            if target in false_negatives:
+                false_negatives.remove(target)
+
+    return true_positives, false_positives, false_negatives
+
+
 def calculate_statistics(
-    row: pd.DataFrame, score_cutoff: int = 50
+    row: pd.DataFrame,
+    scorer: Callable[[str, str], int] = fuzz.partial_ratio,
+    processor: Callable[[str], str] = lambda s: s.lower(),
+    score_cutoff: int = 90,
 ) -> Dict[str, List[str]]:
     """Calculate statistics for a row of the validation set.
-
     This function is meant to be used with pandas.DataFrame.apply()
 
     Args:
@@ -54,33 +84,35 @@ def calculate_statistics(
                               - "stats" -> containing "TP", "FP" or "FN" for
                                 each label in "labels".
     """
-    predictions = list(set(row["model_prediction"].split("|")))
-    labels = row["labels"].split("|")
+    print(row["model_prediction"], row["labels"])
+    predictions = list(set(row["model_prediction"].strip().split("|")))
+    labels = row["labels"].strip().split("|")
 
-    label_values = ["FN" for i in range(len(labels))]
-    false_positives = []
+    true_positives, false_positives, false_negatives = retrieve_tpfpfn(
+        predictions, labels, scorer, processor, score_cutoff
+    )
 
-    if len(predictions[0]) > 0:
-
-        for i, prediction in enumerate(predictions):
-            lbl_match = process.extractOne(
-                prediction, labels, score_cutoff=score_cutoff
-            )
-            if lbl_match is not None:
-                label_values[labels.index(lbl_match[0])] = "TP"
-            else:
-                false_positives.append(prediction)
+    make_list = lambda s, list_s: [s] * len(list_s)
 
     output_statistics = {
-        "labels": labels + false_positives,
-        "stats": label_values + ["FP" for _ in range(len(false_positives))],
+        "labels": true_positives + false_negatives + false_positives,
+        "stats": (
+            make_list("TP", true_positives)
+            + make_list("FN", false_negatives)
+            + make_list("FP", false_positives)
+        ),
     }
 
     return output_statistics
 
 
 def evaluate_kaggle_private(
-    model: Model, config: Dict[str, str], batch_size: int, min_score: int = 50
+    model: Model,
+    config: Dict[str, str],
+    batch_size: int,
+    scorer: Callable[[str, str], int] = fuzz.partial_ratio,
+    processor: Callable[[str], str] = lambda s: s.lower(),
+    min_score: int = 90,
 ) -> ModelEvaluation:
     """Evaluate a model on the validation set.
 
@@ -100,10 +132,14 @@ def evaluate_kaggle_private(
     output = model.inference_dataframe(config, validation_dataframe)
     total = time() - start
 
-    calc_f = partial(calculate_statistics, score_cutoff=min_score)
+    calc_f = partial(
+        calculate_statistics,
+        score_cutoff=min_score,
+        scorer=scorer,
+        processor=processor,
+    )
 
-    tqdm.pandas()
-    validation_dataframe["statistics"] = output.progress_apply(calc_f, axis=1)
+    validation_dataframe["statistics"] = output.apply(calc_f, axis=1)
 
     all_labels = list(
         chain(*list(map(lambda x: x["labels"], output["statistics"].values)))

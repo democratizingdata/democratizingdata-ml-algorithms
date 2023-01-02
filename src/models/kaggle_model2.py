@@ -69,7 +69,7 @@ class KaggleModel2(Model):
 
         model.train()
         iter = 0
-        accum_for: int = config.accum_for
+        accum_for = config.accum_for
         running_total_loss = 0  # Display running average of loss across epoch
         with trange(
             0,
@@ -92,12 +92,13 @@ class KaggleModel2(Model):
                     add_special_tokens=True,
                     return_tensors="pt",
                 )
-                batch_labels = (
-                    torch.tensor(train_labels[batch_idx_start:batch_idx_end])
-                    # .long()
-                    # .cuda()
-                )
-                # batch_features = {k: v.cuda() for k, v in batch_features.items()}
+                batch_labels = torch.tensor(train_labels[batch_idx_start:batch_idx_end])
+
+                if torch.cuda.is_available():
+                    # the .long() call is from the original code, but I am not
+                    # sure why it is needed. I am not an avid pytorch user.
+                    batch_labels = batch_labels.long().cuda()
+                    batch_features = {k: v.cuda() for k, v in batch_features.items()}
 
                 model_outputs = model(
                     **batch_features, labels=batch_labels, return_dict=True
@@ -111,8 +112,11 @@ class KaggleModel2(Model):
                 # else:
                 loss.backward()
 
-                # running_total_loss += loss.detach().cpu().numpy()
-                running_total_loss += loss.detach().numpy()
+                if torch.cuda.is_available():
+                    running_total_loss += loss.detach().cpu().numpy()
+                else:
+                    running_total_loss += loss.detach().numpy()
+
                 t.set_postfix(loss=running_total_loss / iter)
 
                 if iter % accum_for == 0:
@@ -131,7 +135,7 @@ class KaggleModel2(Model):
             len(test_strings),
             config.batch_size,
             desc="Epoch {}".format(curr_epoch),
-        ) as t:
+        ) as t, torch.no_grad():
             for batch_idx_start in t:
                 iter += 1
                 batch_idx_end = min(
@@ -147,12 +151,13 @@ class KaggleModel2(Model):
                     add_special_tokens=True,
                     return_tensors="pt",
                 )
-                batch_labels = (
-                    torch.tensor(test_labels[batch_idx_start:batch_idx_end])
-                    # .long()
-                    # .cuda()
-                )
-                # batch_features = {k: v.cuda() for k, v in batch_features.items()}
+                batch_labels = torch.tensor(test_labels[batch_idx_start:batch_idx_end])
+
+                if torch.cuda.is_available():
+                    # the .long() call is from the original code, but I am not
+                    # sure why it is needed. I am not an avid pytorch user.
+                    batch_labels = batch_labels.long().cuda()
+                    batch_features = {k: v.cuda() for k, v in batch_features.items()}
 
                 model_outputs = model(
                     **batch_features, labels=batch_labels, return_dict=True
@@ -160,19 +165,15 @@ class KaggleModel2(Model):
                 loss = model_outputs["loss"]
                 loss = loss / config.accum_for  # Normalize if we're doing GA
 
-                # if config["use_amp"]:
-                #     with amp.scale_loss(loss, opt) as scaled_loss:
-                #         scaled_loss.backward()
-                # else:
-                # loss.backward()
+                if torch.cuda.is_available():
+                    running_total_loss += loss.detach().cpu().numpy()
+                else:
+                    running_total_loss += loss.detach().numpy()
 
-                # running_total_loss += loss.detach().cpu().numpy()
-                running_total_loss += loss.detach().numpy()
                 t.set_postfix(loss=running_total_loss / iter)
 
-                # if iter % config["accum_for"] == 0:
-                #     opt.step()
-                #     opt.zero_grad()
+                if iter % config["accum_for"] == 0:
+                    logger.log_metric()
 
     def inference_string(self, config: Dict[str, Any], text: str) -> str:
         raise NotImplementedError()

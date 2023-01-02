@@ -4,6 +4,7 @@
 # models that do binary entity classification and use the schwartz hearst
 # algorithm to extract entities.
 
+from itertools import chain
 from typing import Any, Dict, List
 
 import pandas as pd
@@ -25,14 +26,11 @@ class SchwartzHearstModel(Model):
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
         def infer_sample(text: List[Dict[str, str]]) -> str:
-            predictions = []
             all_text = " ".join([s["text"].replace("\n", " ").strip() for s in text])
             extractions = extract_abbreviation_definition_pairs(doc_text=all_text)
 
-            predictions = [e + "|" + extractions[e] for e in extractions]
+            return "|".join(chain.from_iterable(extractions.items()))
 
-            return "|".join(predictions)
-
-        df["model_prediction"] = df["text"].progress_apply(infer_sample)
+        df["model_prediction"] = df["text"].apply(infer_sample)
 
         return df

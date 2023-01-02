@@ -351,3 +351,13 @@ if __name__ == "__main__":
     assert extract_abbreviation_definition_pairs(
         doc_text="The National Institutes of Health (NIH) is a biomedical research facility in the United States."
     ) == {"NIH": "National Institutes of Health"}
+
+    import json
+
+    with open("data/kaggle/validation/7d9c76c33.json", "r") as f:
+        doc = json.load(f)
+
+    text = " ".join([section["text"] for section in doc])
+
+    logging.basicConfig(level=logging.INFO)
+    print(extract_abbreviation_definition_pairs(doc_text=text))
