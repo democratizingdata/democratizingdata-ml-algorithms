@@ -11,6 +11,7 @@ from tqdm import tqdm
 from src.data.kaggle_repository import KaggleRepository
 from src.models.base_model import Model
 
+
 @dc.dataclass
 class ModelEvaluation:
     output_statistics: pd.DataFrame
@@ -27,7 +28,6 @@ class ModelEvaluation:
     def recall(self) -> float:
         return self.tp / (self.tp + self.fn)
 
-
     def __repr__(self) -> str:
         return f"""
         Model Evaluation:
@@ -39,7 +39,9 @@ class ModelEvaluation:
         """
 
 
-def calculate_statistics(row: pd.DataFrame, score_cutoff:int=50) -> Dict[str, List[str]]:
+def calculate_statistics(
+    row: pd.DataFrame, score_cutoff: int = 50
+) -> Dict[str, List[str]]:
     """Calculate statistics for a row of the validation set.
 
     This function is meant to be used with pandas.DataFrame.apply()
@@ -61,7 +63,9 @@ def calculate_statistics(row: pd.DataFrame, score_cutoff:int=50) -> Dict[str, Li
     if len(predictions[0]) > 0:
 
         for i, prediction in enumerate(predictions):
-            lbl_match = process.extractOne(prediction, labels, score_cutoff=score_cutoff)
+            lbl_match = process.extractOne(
+                prediction, labels, score_cutoff=score_cutoff
+            )
             if lbl_match is not None:
                 label_values[labels.index(lbl_match[0])] = "TP"
             else:
@@ -73,6 +77,7 @@ def calculate_statistics(row: pd.DataFrame, score_cutoff:int=50) -> Dict[str, Li
     }
 
     return output_statistics
+
 
 def evaluate_kaggle_private(
     model: Model, config: Dict[str, str], batch_size: int, min_score: int = 50
@@ -92,9 +97,7 @@ def evaluate_kaggle_private(
     validation_dataframe = KaggleRepository().get_validation_dataframe(batch_size)
 
     start = time()
-    output = model.inference_dataframe(
-        config, validation_dataframe
-    )
+    output = model.inference_dataframe(config, validation_dataframe)
     total = time() - start
 
     calc_f = partial(calculate_statistics, score_cutoff=min_score)
@@ -102,7 +105,9 @@ def evaluate_kaggle_private(
     tqdm.pandas()
     validation_dataframe["statistics"] = output.progress_apply(calc_f, axis=1)
 
-    all_labels = list(chain(*list(map(lambda x: x["labels"], output["statistics"].values))))
+    all_labels = list(
+        chain(*list(map(lambda x: x["labels"], output["statistics"].values)))
+    )
     global_stats = list(
         chain(*list(map(lambda x: x["stats"], output["statistics"].values)))
     )
@@ -116,7 +121,7 @@ def evaluate_kaggle_private(
     )
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     from src.models.schwartz_hearst_model import SchwartzHearstModel
 
     tqdm.pandas()

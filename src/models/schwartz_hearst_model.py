@@ -13,6 +13,7 @@ from src.data.repository import Repository
 from src.models.base_model import Model, Hyperparameters
 from src.models.schwartz_hearst import extract_abbreviation_definition_pairs
 
+
 class SchwartzHearstModel(Model):
     def train(self, repository: Repository, config: Hyperparameters) -> None:
         pass
@@ -23,7 +24,6 @@ class SchwartzHearstModel(Model):
     def inference_dataframe(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
-
         def infer_sample(text: List[Dict[str, str]]) -> str:
             predictions = []
             all_text = " ".join([s["text"].replace("\n", " ").strip() for s in text])
