@@ -13,7 +13,7 @@ import spacy
 
 
 from src.data.repository import Repository
-from src.models.base_model import Model, Hyperparameters
+from src.models.base_model import Model
 from src.models.schwartz_hearst_allenai import (
     AbbreviationDetector,
     extract_abbreviation_definition_pairs,
@@ -57,7 +57,7 @@ class SchwartzHearstModel_AllenAI(Model):
         self.nlp = spacy.load(model)
         self.nlp.add_pipe("abbreviation_detector")
 
-    def train(self, repository: Repository, config: Hyperparameters) -> None:
+    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
         pass
 
     def inference_string(self, config: Dict[str, Any], text: str) -> str:
