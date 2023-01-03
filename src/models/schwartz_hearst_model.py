@@ -11,12 +11,12 @@ import pandas as pd
 
 
 from src.data.repository import Repository
-from src.models.base_model import Model, Hyperparameters
+from src.models.base_model import Model
 from src.models.schwartz_hearst import extract_abbreviation_definition_pairs
 
 
 class SchwartzHearstModel(Model):
-    def train(self, repository: Repository, config: Hyperparameters) -> None:
+    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
         pass
 
     def inference_string(self, config: Dict[str, Any], text: str) -> str:

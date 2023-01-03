@@ -84,7 +84,6 @@ def calculate_statistics(
                               - "stats" -> containing "TP", "FP" or "FN" for
                                 each label in "labels".
     """
-    print(row["model_prediction"], row["labels"])
     predictions = list(set(row["model_prediction"].strip().split("|")))
     labels = row["labels"].strip().split("|")
 
