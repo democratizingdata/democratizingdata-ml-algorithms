@@ -4,11 +4,11 @@ from typing import Any, Dict
 import pandas as pd
 
 from src.data.repository import Repository
-from src.models.base_model import Model, Hyperparameters
+from src.models.base_model import Model
 
 
 class KaggleModel1(Model):
-    def train(self, repository: Repository, config: Hyperparameters) -> None:
+    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
         raise NotImplementedError()
 
     def inference_string(self, config: Dict[str, Any], text: str) -> str:

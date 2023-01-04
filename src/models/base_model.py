@@ -2,6 +2,7 @@ import dataclasses as dc
 from typing import Any, Dict
 
 import pandas as pd
+import click
 
 from src.data.repository import Repository
 
@@ -18,5 +19,8 @@ class Model:
     ) -> pd.DataFrame:
         raise NotImplementedError()
 
+
     def menu(self) -> None:
         raise NotImplementedError()
+
+
