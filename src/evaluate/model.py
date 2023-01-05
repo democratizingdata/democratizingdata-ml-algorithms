@@ -2,7 +2,7 @@ import dataclasses as dc
 from functools import partial
 from itertools import chain
 from time import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 from thefuzz import fuzz, process
@@ -27,6 +27,29 @@ class ModelEvaluation:
     @property
     def recall(self) -> float:
         return self.tp / (self.tp + self.fn)
+
+    @staticmethod
+    def toJSON(model_eval: "ModelEvaluation") -> Dict[str, Any]:
+        json_encoding = dict(
+            output_statistics=model_eval.output_statistics.to_json(),
+            run_time=model_eval.run_time,
+            tp=model_eval.tp,
+            fp=model_eval.fp,
+            fn=model_eval.fn,
+        )
+        return json_encoding
+
+    @staticmethod
+    def fromJSON(json_encoding: Dict[str, Any]) -> "ModelEvaluation":
+        return ModelEvaluation(
+            output_statistics=pd.read_json(json_encoding["output_statistics"]),
+            run_time=json_encoding["run_time"],
+            tp=json_encoding["tp"],
+            fp=json_encoding["fp"],
+            fn=json_encoding["fn"],
+        )
+
+
 
     def __repr__(self) -> str:
         return f"""

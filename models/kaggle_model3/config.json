@@ -1,2 +1,6 @@
 {
+    "keywords": ["data"],
+    "min_train_count": 2,
+    "rel_freq_threshold": 0.1,
+    "model_path": "baseline/params.txt"
 }

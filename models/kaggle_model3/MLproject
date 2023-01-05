@@ -1,0 +1,15 @@
+name: kaggle_model3
+
+conda_env: conda_env.yaml
+
+entry_points:
+  train:
+    parameters:
+      repo: {type: string, default: "kaggle"}
+      config: {type: path, default: "models/kaggle_model3/config.json"}
+    command: "python -m pip install -e ../../. && python ../../src/models/kaggle_model3_mlflow.py train {repo} --config {config}"
+  validate:
+    parameters:
+      repo: {type: string, default: "kaggle"}
+      config: {type: path, default: "models/kaggle_model3/config.json"}
+    command: "python ../../src/models/kaggle_model3_mlflow.py validate {repo} --config {config}"

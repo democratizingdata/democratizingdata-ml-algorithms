@@ -1,0 +1,10 @@
+name: kaggle_model3
+channels:
+- conda-forge
+dependencies:
+- python=3.10
+- mlflow
+- pandas
+- thefuzz
+- tqdm
+- pip
