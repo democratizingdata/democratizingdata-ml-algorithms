@@ -8,6 +8,7 @@ import pandas as pd
 from thefuzz import fuzz, process
 from tqdm import tqdm
 
+from src.data.repository import Repository
 from src.data.kaggle_repository import KaggleRepository
 from src.models.base_model import Model
 
@@ -28,19 +29,18 @@ class ModelEvaluation:
     def recall(self) -> float:
         return self.tp / (self.tp + self.fn)
 
-    @staticmethod
-    def toJSON(model_eval: "ModelEvaluation") -> Dict[str, Any]:
+    def to_json(self) -> Dict[str, Any]:
         json_encoding = dict(
-            output_statistics=model_eval.output_statistics.to_json(),
-            run_time=model_eval.run_time,
-            tp=model_eval.tp,
-            fp=model_eval.fp,
-            fn=model_eval.fn,
+            output_statistics=self.output_statistics.to_json(),
+            run_time=self.run_time,
+            tp=self.tp,
+            fp=self.fp,
+            fn=self.fn,
         )
         return json_encoding
 
     @staticmethod
-    def fromJSON(json_encoding: Dict[str, Any]) -> "ModelEvaluation":
+    def from_json(json_encoding: Dict[str, Any]) -> "ModelEvaluation":
         return ModelEvaluation(
             output_statistics=pd.read_json(json_encoding["output_statistics"]),
             run_time=json_encoding["run_time"],
@@ -108,7 +108,7 @@ def calculate_statistics(
                                 each label in "labels".
     """
     predictions = list(set(row["model_prediction"].strip().split("|")))
-    labels = row["labels"].strip().split("|")
+    labels = row["label"].strip().split("|")
 
     true_positives, false_positives, false_negatives = retrieve_tpfpfn(
         predictions, labels, scorer, processor, score_cutoff
@@ -128,10 +128,49 @@ def calculate_statistics(
     return output_statistics
 
 
+def evaluate_model(
+    repository:  Repository,
+    model: Model,
+    config: Dict[str, Any],
+    scorer: Callable[[str, str], int] = fuzz.partial_ratio,
+    processor: Callable[[str], str] = lambda s: s.lower(),
+    min_score: int = 90,
+) -> ModelEvaluation:
+
+    validation_dataframe = repository.get_validation_data()
+
+
+    start = time()
+    output = model.inference(config, validation_dataframe)
+    total = time() - start
+
+    calc_f = partial(
+        calculate_statistics,
+        score_cutoff=min_score,
+        scorer=scorer,
+        processor=processor,
+    )
+
+    validation_dataframe["statistics"] = output.apply(calc_f, axis=1)
+
+    all_labels = list(
+        chain(*list(map(lambda x: x["labels"], output["statistics"].values)))
+    )
+    global_stats = list(
+        chain(*list(map(lambda x: x["stats"], output["statistics"].values)))
+    )
+
+    return ModelEvaluation(
+        output_statistics=validation_dataframe.loc[:, ["id", "label", "statistics"]],
+        run_time=total,
+        tp=global_stats.count("TP"),
+        fp=global_stats.count("FP"),
+        fn=global_stats.count("FN"),
+    )
+
 def evaluate_kaggle_private(
     model: Model,
-    config: Dict[str, str],
-    batch_size: int,
+    config: Dict[str, Any],
     scorer: Callable[[str, str], int] = fuzz.partial_ratio,
     processor: Callable[[str], str] = lambda s: s.lower(),
     min_score: int = 90,
@@ -147,11 +186,10 @@ def evaluate_kaggle_private(
         ModelEvaluation
     """
 
-    batch_size = -1
-    validation_dataframe = KaggleRepository().get_validation_dataframe(batch_size)
+    validation_dataframe = KaggleRepository().get_validation_data()
 
     start = time()
-    output = model.inference_dataframe(config, validation_dataframe)
+    output = model.inference(config, validation_dataframe)
     total = time() - start
 
     calc_f = partial(

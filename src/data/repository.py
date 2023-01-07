@@ -1,14 +1,13 @@
-from typing import Iterator, Optional, Tuple, Union
+from typing import Iterator, Optional, Protocol, Tuple, Union
 
 import pandas as pd
 
-
-class Repository:
+class Repository(Protocol):
     def get_training_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        raise NotImplementedError()
+        ...
 
     def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        raise NotImplementedError()
+        ...
 
-    def get_validation(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        raise NotImplementedError()
+    def get_validation_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        ...

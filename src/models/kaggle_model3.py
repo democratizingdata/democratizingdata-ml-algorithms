@@ -75,7 +75,6 @@
 import json
 import logging
 import os
-from pathlib import Path
 import re
 from collections import Counter, defaultdict
 from itertools import chain, filterfalse
@@ -84,7 +83,6 @@ from typing import (
     Callable,
     Dict,
     Iterable,
-    Iterator,
     List,
     Optional,
     Set,
@@ -95,20 +93,64 @@ from typing import (
 import pandas as pd
 from tqdm import tqdm
 
-from src.data.kaggle_repository import KaggleRepository
 from src.data.repository import Repository
-from src.models.base_model import Hyperparameters, Model
+import src.models.base_model as bm 
+import src.evaluate.model as em
 
-logger = logging.getLogger("KaggleModel3")
+logger = logging.getLogger("kaggle_model3")
+
+def validate_config(config: Dict[str, Any]) -> None:
+
+    expected_keys = [
+        "keywords",
+        "min_train_count",
+        "rel_freq_threshold",
+        "model_path",
+        "eval_path",
+    ]
+
+    for key in expected_keys:
+        assert key in config, f"Missing key {key} in config"
 
 
-class Model3Hyperparameters(Hyperparameters):
-    keywords: List[str] = ["data"]
-    min_train_count: int = 2
-    rel_freq_threshold: float = 0.1
+def train(repository: Repository, config: Dict[str, Any]) -> None:
+    """Trains the model and saves the results to config.model_path
+
+    Args:
+        repository (Repository): Repository object
+        config (Dict[str, Any]): Configuration dictionary
+
+    Returns:
+        None
+    """
+    validate_config(config)
+
+    model = KaggleModel3()
+    model.train(repository, config)
 
 
-class KaggleModel3(Model):
+def validate(repository: Repository, config: Dict[str, Any]) -> None:
+    """Validates the model and saves the results to config.model_path
+
+    Args:
+        repository (Repository): Repository object
+        config (Dict[str, Any]): Configuration dictionary
+
+    Returns:
+        None
+    """
+    validate_config(config)
+
+    model = KaggleModel3()
+    model_evaluation = em.evaluate_model(repository, model, config)
+
+    print(model_evaluation)
+
+    logger.info(f"Saving evaluation to {config['eval_path']}")
+    with open(config["eval_path"], "w") as f:
+        json.dump(model_evaluation.to_json(), f)
+
+class KaggleModel3(bm.Model):
     """This class is based on the Kaggle model 3 notebook.
 
     Model 3 is a heuristic model, so it doesn't need to be "trained" in the
@@ -173,7 +215,7 @@ class KaggleModel3(Model):
     )  # matches: whitespace, open bracket, anything, close bracket
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
-    def train(self, repository: Repository, config: Model3Hyperparameters) -> None:
+    def train(self, repository: Repository, config: Dict[str, Any], exp_logger:bm.SupportsLogging) -> None:
         """Extracts dataset mentions and saves them to config.model_path
 
         Args:
@@ -249,9 +291,9 @@ class KaggleModel3(Model):
                 texts,
                 ssai_par_datasets,
                 KaggleModel3._get_index(texts, set(words)),
-                config.keywords,
-                config.min_train_count,
-                config.rel_freq_threshold,
+                config["keywords"],
+                config["min_train_count"],
+                config["rel_freq_threshold"],
                 KaggleModel3.TOKENIZE_PAT,
             ),
             MapFilter_BRPatSub(KaggleModel3.BR_PAT),
@@ -270,15 +312,12 @@ class KaggleModel3(Model):
         ]
         datasets = set(ssai_par_datasets) | set(train_datasets)
 
-        logger.info(f"Saving {len(datasets)} datasets to {config.model_path}")
-        os.makedirs(os.path.dirname(config.model_path), exist_ok=True)
-        with open(config.model_path, "w") as f:
+        logger.info(f"Saving {len(datasets)} datasets to {config['model_path']}")
+        os.makedirs(os.path.dirname(config["model_path"]), exist_ok=True)
+        with open(config["model_path"], "w") as f:
             f.write("\n".join(datasets))
 
-    def inference_string(self, config: Dict[str, Any], text: str) -> str:
-        raise NotImplementedError()
-
-    def inference_dataframe(
+    def inference(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
         """Inference method for the KaggleModel3
@@ -294,21 +333,18 @@ class KaggleModel3(Model):
                           containing the inferred datasets
         """
 
-        with open(config["params"]) as f:
+        with open(config["model_path"]) as f:
             datasets = set([l.strip() for l in f.readlines()])
 
-        def infer_sample(text: List[Dict[str, str]]) -> str:
+        def infer_sample(text: str) -> str:
             predictions = []
-            for section in text:
-                section_text = section["text"]
-                for paragraph in section_text.split("\n"):
-                    for sent in re.split("[\.]", paragraph):
-                        for ds in datasets:
-                            if (ds in sent) and (ds not in predictions):
-                                predictions.append(ds)
-                                predictions.extend(
-                                    KaggleModel3.get_parenthesis(sent, ds)
-                                )
+            for sent in re.split("[\.]", text):
+                for ds in datasets:
+                    if (ds in sent) and (ds not in predictions):
+                        predictions.append(ds)
+                        predictions.extend(
+                            KaggleModel3.get_parenthesis(sent, ds)
+                        )
             return "|".join(predictions)
 
         df["model_prediction"] = df["text"].apply(infer_sample)
@@ -748,77 +784,87 @@ class DotSplitSentencizer(Sentencizer):
 
 
 if __name__ == "__main__":
+    bm.train = train
+    bm.validate = validate
+    bm.main()
 
-    input = (
-        "This model was trained on the Really Great Dataset (RGD)"
-        + " and the Really Bad Dataset (RBD) and it went well"
-        + " (though not that well)."
-    )
-    dataset = "Really Great Dataset"
-    KaggleModel3.get_parenthesis(text=input, dataset=dataset)
-    assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
-    assert KaggleModel3._tokenized_extract([input], KaggleModel3.KEYWORDS) == [
-        "Really Great Dataset (RGD)",
-        "Really Bad Dataset (RBD)",
-    ]
 
-    assert list(MapFilter_AndThe()([input])) == [
-        "Really Bad Dataset (RBD) and it went well (though not that well)."
-    ]
-    assert list(MapFilter_StopWords(stopwords=["really", "bad"])([input])) == []
-    assert list(MapFilter_StopWords(stopwords=["stopword"])([input])) == [input]
+# if __name__ == "__main__":
 
-    assert list(
-        MapFilter_IntroSSAI(
-            keywords=KaggleModel3.KEYWORDS, tokenize_pattern=KaggleModel3.TOKENIZE_PAT
-        )(["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"])
-    ) == ["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"]
+#     input = (
+#         "This model was trained on the Really Great Dataset (RGD)"
+#         + " and the Really Bad Dataset (RBD) and it went well"
+#         + " (though not that well)."
+#     )
+#     dataset = "Really Great Dataset"
+#     KaggleModel3.get_parenthesis(text=input, dataset=dataset)
+#     assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
+#     assert KaggleModel3._tokenized_extract([input], KaggleModel3.KEYWORDS) == [
+#         "Really Great Dataset (RGD)",
+#         "Really Bad Dataset (RBD)",
+#     ]
 
-    assert list(MapFilter_IntroWords()(["Really to the data is great"])) == [
-        "data is great"
-    ]
-    assert list(
-        MapFilter_BRLessThanTwoWords(
-            br_pat=KaggleModel3.BR_PAT, tokenize_pat=KaggleModel3.TOKENIZE_PAT
-        )([input, "Hello World (HW)"])
-    ) == [input]
+#     assert list(MapFilter_AndThe()([input])) == [
+#         "Really Bad Dataset (RBD) and it went well (though not that well)."
+#     ]
+#     assert list(MapFilter_StopWords(stopwords=["really", "bad"])([input])) == []
+#     assert list(MapFilter_StopWords(stopwords=["stopword"])([input])) == [input]
 
-    assert list(
-        MapFilter_PartialMatchDatasets(dataset=[input], br_pat=KaggleModel3.BR_PAT)(
-            [input]
-        )
-    ) == [input]
+#     assert list(
+#         MapFilter_IntroSSAI(
+#             keywords=KaggleModel3.KEYWORDS, tokenize_pattern=KaggleModel3.TOKENIZE_PAT
+#         )(["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"])
+#     ) == ["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"]
 
-    assert MapFilter_TrainCounts.get_index(
-        [input, input[: input.index("Dataset")]], ["Really", "Great", "Dataset"]
-    ) == {"Really": {0, 1}, "Great": {0, 1}, "Dataset": {0}}
+#     assert list(MapFilter_IntroWords()(["Really to the data is great"])) == [
+#         "data is great"
+#     ]
+#     assert list(
+#         MapFilter_BRLessThanTwoWords(
+#             br_pat=KaggleModel3.BR_PAT, tokenize_pat=KaggleModel3.TOKENIZE_PAT
+#         )([input, "Hello World (HW)"])
+#     ) == [input]
 
-    assert MapFilter_TrainCounts.extend_paranthesis(["Really Great Dataset (RGD)"]) == [
-        "Really Great Dataset",
-        "Really Great Dataset (RGD)",
-    ]
+#     assert list(
+#         MapFilter_PartialMatchDatasets(dataset=[input], br_pat=KaggleModel3.BR_PAT)(
+#             [input]
+#         )
+#     ) == [input]
 
-    assert MapFilter_TrainCounts.get_train_predictions_counts_data(
-        texts=[input, input[: input.index("Dataset")]],
-        datasets=["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"],
-        index=MapFilter_TrainCounts.get_index(
-            [input, input[: input.index("Dataset")]],
-            ["Really", "Great", "Dataset", "Really", "Bad", "Dataset"],
-        ),
-        kw="data",
-        tokenize_pat=KaggleModel3.TOKENIZE_PAT,
-    ) == (
-        Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
-        Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
-    )
+#     assert MapFilter_TrainCounts.get_index(
+#         [input, input[: input.index("Dataset")]], ["Really", "Great", "Dataset"]
+#     ) == {"Really": {0, 1}, "Great": {0, 1}, "Dataset": {0}}
 
-    config = Model3Hyperparameters(
-        model_path="models/kagglemodel3/baseline/params.txt",
-        keywords=["data"],
-        min_train_count=2,
-        rel_freq_threshold=0.1,
-        batch_size=-1,
-    )
+#     assert MapFilter_TrainCounts.extend_paranthesis(["Really Great Dataset (RGD)"]) == [
+#         "Really Great Dataset",
+#         "Really Great Dataset (RGD)",
+#     ]
 
-    logging.basicConfig(level=logging.INFO)
-    KaggleModel3().train(KaggleRepository(), config)
+#     assert MapFilter_TrainCounts.get_train_predictions_counts_data(
+#         texts=[input, input[: input.index("Dataset")]],
+#         datasets=["Really Great Dataset (RGD)", "Really Bad Dataset (RBD)"],
+#         index=MapFilter_TrainCounts.get_index(
+#             [input, input[: input.index("Dataset")]],
+#             ["Really", "Great", "Dataset", "Really", "Bad", "Dataset"],
+#         ),
+#         kw="data",
+#         tokenize_pat=KaggleModel3.TOKENIZE_PAT,
+#     ) == (
+#         Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
+#         Counter({"Really Great Dataset (RGD)": 1, "Really Bad Dataset (RBD)": 1}),
+#     )
+
+#     config = Model3Hyperparameters(
+#         model_path="models/kagglemodel3/baseline/params.txt",
+#         keywords=["data"],
+#         min_train_count=2,
+#         rel_freq_threshold=0.1,
+#         batch_size=-1,
+#     )
+
+#     logging.basicConfig(level=logging.INFO)
+#     KaggleModel3().train(KaggleRepository(), config)
+
+
+
+

@@ -31,7 +31,7 @@ class KaggleRepository(Repository):
         )
 
         self.validation_dataframe_location = os.path.join(
-            self.local, "../../data/kaggle/validation_dataframe.csv"
+            self.local, "../../data/kaggle/validation_labels.csv"
         )
 
         assert os.path.exists(
@@ -62,10 +62,13 @@ class KaggleRepository(Repository):
     def get_training_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         fetch_f = partial(self.retrieve_text, self.train_files_location)
 
-        if batch_size:
+        def iter_f():
             for batch in pd.read_csv(self.train_dataframe_location, chunksize=batch_size):
                 batch["text"] = batch.apply(fetch_f, axis=1)
                 yield batch
+
+        if batch_size:
+            return iter_f()
         else:
             df = pd.read_csv(self.train_dataframe_location)
             df["text"] = df.apply(fetch_f, axis=1)
@@ -74,26 +77,32 @@ class KaggleRepository(Repository):
     def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         fetch_f = partial(self.retrieve_text, self.train_files_location)
 
-        if batch_size:
+        def iter_f():
             for batch in pd.read_csv(self.test_dataframe_location, chunksize=batch_size):
                 batch["text"] = batch.apply(fetch_f, axis=1)
                 yield batch
+
+        if batch_size:
+            return iter_f()
         else:
             df = pd.read_csv(self.test_dataframe_location)
             df["text"] = df.apply(fetch_f, axis=1)
             return df
 
-    def get_validation(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+    def get_validation_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         fetch_f = partial(self.retrieve_text, self.validation_files_location)
 
-        if batch_size:
+        def iter_f():
             for batch in pd.read_csv(self.validation_dataframe_location, chunksize=batch_size):
-                batch.loc[:, ["Id", "PredictionString"]].rename(columns={"Id": "id", "PredictionString": "label"}, inplace=True)
+                batch = batch.loc[:, ["Id", "PredictionString"]].rename(columns={"Id": "id", "PredictionString": "label"})
                 batch["text"] = batch.apply(fetch_f, axis=1)
                 yield batch
+
+        if batch_size:
+            return iter_f()
         else:
             df = pd.read_csv(self.validation_dataframe_location)
-            df.loc[:, ["Id", "PredictionString"]].rename(columns={"Id": "id", "PredictionString": "label"}, inplace=True)
+            df = df.loc[:, ["Id", "PredictionString"]].rename(columns={"Id": "id", "PredictionString": "label"})
             df["text"] = df.apply(fetch_f, axis=1)
             return df
 

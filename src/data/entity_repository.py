@@ -1,4 +1,4 @@
-import inspect
+import logging
 from itertools import islice
 import os
 from typing import Iterator, Optional, Tuple, Union
@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 
 from src.data.repository import Repository
 
+logger = logging.getLogger("entity_repository")
 
 class EntityRepository(Repository):
     def __init__(self):
@@ -32,18 +33,24 @@ class EntityRepository(Repository):
             self.build()
 
     def get_training_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        if batch_size:
+        def iter_f():
             for batch in pd.read_csv(self.train_dataframe_location, chunksize=batch_size):
                 yield batch
+
+        if batch_size:
+            return iter_f()
         else:
             df = pd.read_csv(self.train_dataframe_location)
             return df
 
-
     def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        if batch_size:
-            for batch in pd.read_csv(self.train_dataframe_location, chunksize=batch_size):
+        
+        def iter_f():
+            for batch in pd.read_csv(self.test_dataframe_location, chunksize=batch_size):
                 yield batch
+        
+        if batch_size:
+            return iter_f()
         else:
             df = pd.read_csv(self.train_dataframe_location)
             return df
@@ -63,10 +70,10 @@ class EntityRepository(Repository):
 
 
     def __repr__(self) -> str:
-        return "EntityRepository"
+        return "entity_repository"
 
 
 if __name__ == "__main__":
     repo = EntityRepository()
-    d = repo.get_training_data()
-    assert isinstance(d, pd.DataFrame), f"Should be a dataframe but is a {type(d)}"
+    df = repo.get_training_data()
+    assert isinstance(df, pd.DataFrame), f"Should be a dataframe but is a {type(df)}"

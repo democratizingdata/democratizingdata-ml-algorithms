@@ -8,3 +8,4 @@ dependencies:
 - thefuzz
 - tqdm
 - pip
+- unidecode
