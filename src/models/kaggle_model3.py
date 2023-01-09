@@ -94,7 +94,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from src.data.repository import Repository
-import src.models.base_model as bm 
+import src.models.base_model as bm
 import src.evaluate.model as em
 
 logger = logging.getLogger("kaggle_model3")
@@ -113,12 +113,13 @@ def validate_config(config: Dict[str, Any]) -> None:
         assert key in config, f"Missing key {key} in config"
 
 
-def train(repository: Repository, config: Dict[str, Any]) -> None:
+def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[bm.SupportsLogging]=None) -> None:
     """Trains the model and saves the results to config.model_path
 
     Args:
         repository (Repository): Repository object
         config (Dict[str, Any]): Configuration dictionary
+        training_logger (SupportsLogging, optional): Training logger
 
     Returns:
         None
@@ -215,7 +216,7 @@ class KaggleModel3(bm.Model):
     )  # matches: whitespace, open bracket, anything, close bracket
     PREPS = {"from", "for", "of", "the", "in", "with", "to", "on", "and"}
 
-    def train(self, repository: Repository, config: Dict[str, Any], exp_logger:bm.SupportsLogging) -> None:
+    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
         """Extracts dataset mentions and saves them to config.model_path
 
         Args:

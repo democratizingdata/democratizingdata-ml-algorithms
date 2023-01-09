@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Protocol
+from typing import Any, Dict, Optional, Protocol
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -34,7 +34,7 @@ class Model(Protocol):
     ) -> pd.DataFrame:
         ...
 
-def train(repository: Repository, config: Dict[str, Any], logger: SupportsLogging) -> None:
+def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[SupportsLogging]=None) -> None:
     raise NotImplementedError(NOT_IMPLEMENTED.format("train"))
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
@@ -56,6 +56,7 @@ def main() -> None:
     @cli.command(name="train", help=REPO_HELP_TEXT)
     @click.argument("repo", default="kaggle")
     @click.option("--config", default="", help=CONFIG_HELP_TEXT)
+    @click.option("--comet_project", default="", help="Comet project name")
     def _train(repo: str, config: Dict[str, Any]) -> None:
         repository = resolve_repo(repo)
         with open(config) as f:

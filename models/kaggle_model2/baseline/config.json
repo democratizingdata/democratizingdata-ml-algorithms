@@ -1,0 +1,13 @@
+{
+    "accum_for": 1,
+    "max_cores": 24,
+    "max_seq_len": 128,
+    "use_amp": true,
+    "pretrained_model": "roberta-base",
+    "learning_rate": 1e-5,
+    "num_epochs": 5,
+    "optimizer": "torch.optim.Adam",
+    "model_path": "models/kaggle_model2/baseline",
+    "batch_size": 32,
+    "save_model": true
+}
