@@ -16,6 +16,9 @@ class EntityRepository(Repository):
 
         self.paths = [
             os.path.join(
+                self.local, "../../data/entity_classification/usda_priorities.csv"
+            ),
+            os.path.join(
                 self.local, "../../data/entity_classification/ncses_priorities.csv"
             ),
             os.path.join(
