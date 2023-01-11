@@ -1,20 +1,33 @@
 import dataclasses as dc
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
 from src.data.repository import Repository
-from src.models.base_model import Model
+import src.models.base_model as bm
+
+def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[bm.SupportsLogging]=None) -> None:
+    pass
+
+def validate(repository: Repository, config: Dict[str, Any]) -> None:
+    pass
 
 
-class KaggleModel1(Model):
-    def train(self, repository: Repository, config: Dict[str, Any]) -> None:
-        raise NotImplementedError()
+class KaggleModel1(bm.Model):
+    def __init__(self) -> None:
+        super().__init__()
 
-    def inference_string(self, config: Dict[str, Any], text: str) -> str:
-        raise NotImplementedError()
+    def train(self, repository: Repository, config: Dict[str, Any], exp_logger:bm.SupportsLogging) -> None:
+        ...
 
-    def inference_dataframe(
+    def inference(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
-        raise NotImplementedError()
+        ...
+
+
+
+if __name__=="__main__":
+    bm.train = train
+    bm.validate = validate
+    bm.main()
