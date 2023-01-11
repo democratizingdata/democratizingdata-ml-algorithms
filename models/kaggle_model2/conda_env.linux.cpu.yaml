@@ -7,9 +7,11 @@ channels:
 dependencies:
 - python=3.10
 - comet_ml
+- matplotlib
 - pandas
 - pip
 - pytorch
+- scikit-learn
 - tqdm
 - thefuzz
 - transformers

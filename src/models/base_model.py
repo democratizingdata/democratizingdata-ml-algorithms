@@ -19,7 +19,10 @@ class SupportsLogging(Protocol):
     def log_metric(self, key: str, value: float) -> None:
         ...
 
-    def log_param(self, key: str, value: Any) -> None:
+    def log_parameter(self, key: str, value: Any) -> None:
+        ...
+
+    def log_parameters(self, key: str, value: Any) -> None:
         ...
 
     def log_figure(self, key: str, value: plt.Figure) -> None:
@@ -48,6 +51,28 @@ def resolve_repo(repo_name: str) -> Repository:
     else:
         raise ValueError(f"Unknown repository: {repo_name}")
 
+
+def resolve_training_logger(comet_workspace:str, comet_project:str) -> SupportsLogging:
+
+    if comet_project:
+        from comet_ml import Experiment
+        # if you are issues with authenticating, you need to set the the comet
+        # api key as an environment variable.
+        # export COMET_API_KEY=your_api_key
+        experiment = Experiment(
+            workspace=comet_workspace,
+            project_name=comet_project,
+            auto_metric_logging=False,
+            disabled=False,
+        )
+
+        return experiment
+
+    else:
+        return None
+
+
+
 def main() -> None:
     @click.group()
     def cli() -> None:
@@ -56,12 +81,14 @@ def main() -> None:
     @cli.command(name="train", help=REPO_HELP_TEXT)
     @click.argument("repo", default="kaggle")
     @click.option("--config", default="", help=CONFIG_HELP_TEXT)
+    @click.option("--comet_workspace", default="democratizingdata", help="Comet workspace name")
     @click.option("--comet_project", default="", help="Comet project name")
-    def _train(repo: str, config: Dict[str, Any]) -> None:
+    def _train(repo: str, config: Dict[str, Any], comet_workspace:str, comet_project:str) -> None:
         repository = resolve_repo(repo)
+        training_logger = resolve_training_logger(comet_workspace, comet_project)
         with open(config) as f:
             config_dict = json.load(f)
-        train(repository, config_dict)
+        train(repository, config_dict, training_logger)
 
     @cli.command(name="validate", help=REPO_HELP_TEXT)
     @click.argument("repo", default="kaggle")

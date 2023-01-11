@@ -44,15 +44,15 @@ class EntityRepository(Repository):
             return df
 
     def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        
+
         def iter_f():
             for batch in pd.read_csv(self.test_dataframe_location, chunksize=batch_size):
                 yield batch
-        
+
         if batch_size:
             return iter_f()
         else:
-            df = pd.read_csv(self.train_dataframe_location)
+            df = pd.read_csv(self.test_dataframe_location)
             return df
 
 

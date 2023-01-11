@@ -7,61 +7,117 @@
 
 # This model is a baseline model that uses the original labels from the Kaggle
 # competition. It uses pytorch and the transformers library.
-import dataclasses as dc
+import json
 import logging
 from random import shuffle
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+import numpy as np
 import pandas as pd
 import torch
 
 # from apex import amp
 # from apex.optimizers import FusedAdam
 from tqdm import trange
+from scipy.special import expit, softmax
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
 
 from src.data.repository import Repository
-from src.models.base_model import Hyperparameters, Model
+import src.models.base_model as bm
+import src.evaluate.model as em
 
 logger = logging.getLogger("KaggleModel2")
 
 
-@dc.dataclass
-class Model2Hyperparameters(Hyperparameters):
-    accum_for: int = 1
-    max_cores: int = 24
-    max_seq_len: int = 128
-    use_amp: bool = True
+def validate_config(config: Dict[str, Any]) -> None:
+
+    expected_keys = [
+        "accum_for",
+        "max_cores",
+        "max_seq_len",
+        "use_amp",
+        "pretrained_model",
+        "learning_rate",
+        "num_epochs",
+        "optimizer",
+        "model_path",
+        "batch_size",
+        "save_model",
+    ]
+
+    for key in expected_keys:
+        assert key in config, f"Missing key {key} in config"
 
 
-class KaggleModel2(Model):
-    def train(self, repository: Repository, config: Model2Hyperparameters) -> None:  # type: ignore[override]
+
+def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[bm.SupportsLogging]=None) -> None:
+    """Trains the model and saves the results to config['model_path']
+
+    Args:
+        repository (Repository): Repository object
+        config (Dict[str, Any]): Configuration dictionary
+        training_logger: (SupportsLogging, optional): Logging object for model
+                                                      training
+
+    Returns:
+        None
+    """
+    validate_config(config)
+    training_logger.log_parameters(config)
+    model = KaggleModel2()
+    model.train(repository, config, training_logger)
+
+
+def validate(repository: Repository, config: Dict[str, Any]) -> None:
+    """Validates the model and saves the results to config['model_path']
+
+    Args:
+        repository (Repository): Repository object
+        config (Dict[str, Any]): Configuration dictionary
+
+    Returns:
+        None
+    """
+    validate_config(config)
+
+    model = KaggleModel2()
+    model_evaluation = em.evaluate_model(repository, model, config)
+
+    print(model_evaluation)
+
+    logger.info(f"Saving evaluation to {config['eval_path']}")
+    with open(config["eval_path"], "w") as f:
+        json.dump(model_evaluation.to_json(), f)
+
+
+class KaggleModel2(bm.Model):
+    def train(self, repository: Repository, config: Dict[str, Any], training_logger: bm.SupportsLogging) -> None:  # type: ignore[override]
         pretrained_config = AutoConfig.from_pretrained(
-            config.pretrained_model, num_labels=2
+            config["pretrained_model"], num_labels=2
         )
 
         model = AutoModelForSequenceClassification.from_pretrained(
-            config.pretrained_model, config=pretrained_config
+            config["pretrained_model"], config=pretrained_config
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(config.pretrained_model)
+        tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
 
-        opt = config.optimizer(model.parameters(), lr=config.learning_rate)
+        opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
 
         # get all samples
-        train_samples = next(repository.get_training_data_dataframe(1000000))
-        test_samples = next(repository.get_test_data_dataframe(1000000))
+        train_samples = repository.get_training_data()
+        test_samples = repository.get_test_data()
 
-        for epoch in trange(config.num_epochs):
-            self._train_epoch(model, tokenizer, train_samples, opt, self.logger, epoch)
+        config["step"] = 0
+        for epoch in trange(config["num_epochs"]):
+            config["step"]  = self._train_epoch(config, model, tokenizer, train_samples, opt, training_logger, epoch)
 
-            self._test_epoch(model, tokenizer, test_samples, self.logger, epoch)
-            if config.save_model:
-                model.save_pretrained(config.model_path)
+            self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
+            if config["save_model"]:
+                model.save_pretrained(config["model_path"])
 
-    def _train_epoch(self, model, tokenizer, samples, opt, logger, curr_epoch) -> None:
-
-        all_strings, all_labels = samples["long"].values, samples["is_dataset"].values
+    def _train_epoch(self, config, model, tokenizer, samples, opt, training_logger, curr_epoch) -> None:
+        all_strings, all_labels = samples["entity"].values, samples["label"].values
         train_indices = list(range(len(all_labels)))
         shuffle(train_indices)
         train_strings = all_strings[train_indices]
@@ -69,18 +125,19 @@ class KaggleModel2(Model):
 
         model.train()
         iter = 0
-        accum_for = config.accum_for
+        accum_for = config["accum_for"]
         running_total_loss = 0  # Display running average of loss across epoch
         with trange(
             0,
             len(train_indices),
-            config.batch_size,
+            config["batch_size"],
             desc="Epoch {}".format(curr_epoch),
         ) as t:
             for batch_idx_start in t:
+                config["step"] += 1
                 iter += 1
                 batch_idx_end = min(
-                    batch_idx_start + config.batch_size, len(train_indices)
+                    batch_idx_start + config["batch_size"], len(train_indices)
                 )
 
                 current_batch = list(train_strings[batch_idx_start:batch_idx_end])
@@ -104,13 +161,35 @@ class KaggleModel2(Model):
                     **batch_features, labels=batch_labels, return_dict=True
                 )
                 loss = model_outputs["loss"]
-                loss = loss / config.accum_for  # Normalize if we're doing GA
+                loss = loss / config["accum_for"]  # Normalize if we're doing GA
 
                 # if config["use_amp"]:
                 #     with amp.scale_loss(loss, opt) as scaled_loss:
                 #         scaled_loss.backward()
                 # else:
                 loss.backward()
+
+                if iter % 10 == 0:
+                    with training_logger.train():
+                        training_logger.log_metric(
+                            "loss",
+                            loss.detach().numpy(),
+                            step=config["step"],
+                        )
+                        y_pred = softmax(
+                            model_outputs["logits"].detach().numpy(),
+                            axis=1
+                        )
+                        y_true = batch_labels.detach().numpy()
+
+                        # training_logger.log_confusion_matrix(
+                        #     y_true=y_true,
+                        #     y_predicted=np.argmax(y_pred, axis=1),
+                        #     labels=['positive', 'negative'],
+                        #     index_to_example_function = lambda idx: train_strings[idx],
+                        #     step=config["step"],
+                        # )
+
 
                 if torch.cuda.is_available():
                     running_total_loss += loss.detach().cpu().numpy()
@@ -123,23 +202,27 @@ class KaggleModel2(Model):
                     opt.step()
                     opt.zero_grad()
 
-    def _test_epoch(self, model, tokenizer, samples, logger, curr_epoch) -> None:
-        test_strings, test_labels = samples["long"].values, samples["is_dataset"].values
+        return config["step"]
+
+    def _test_epoch(self, config, model, tokenizer, samples, training_logger, curr_epoch) -> None:
+        test_strings, test_labels = samples["entity"].values, samples["label"].values
 
         model.eval()
         iter = 0
         running_total_loss = 0
+        test_preds = []
+
 
         with trange(
             0,
             len(test_strings),
-            config.batch_size,
+            config["batch_size"],
             desc="Epoch {}".format(curr_epoch),
         ) as t, torch.no_grad():
             for batch_idx_start in t:
                 iter += 1
                 batch_idx_end = min(
-                    batch_idx_start + config.batch_size, len(test_strings)
+                    batch_idx_start + config["batch_size"], len(test_strings)
                 )
 
                 current_batch = list(test_strings[batch_idx_start:batch_idx_end])
@@ -163,7 +246,14 @@ class KaggleModel2(Model):
                     **batch_features, labels=batch_labels, return_dict=True
                 )
                 loss = model_outputs["loss"]
-                loss = loss / config.accum_for  # Normalize if we're doing GA
+                loss = loss / config["accum_for"]  # Normalize if we're doing GA
+
+                test_preds.append(
+                        softmax(
+                            model_outputs["logits"].detach().numpy(),
+                            axis=1
+                    )
+                )
 
                 if torch.cuda.is_available():
                     running_total_loss += loss.detach().cpu().numpy()
@@ -172,35 +262,26 @@ class KaggleModel2(Model):
 
                 t.set_postfix(loss=running_total_loss / iter)
 
-                if iter % config["accum_for"] == 0:
-                    logger.log_metric()
+        test_preds = np.concatenate(test_preds, axis=0)
+        test_preds_labels = np.argmax(test_preds, axis=1)
 
-    def inference_string(self, config: Dict[str, Any], text: str) -> str:
-        raise NotImplementedError()
-
-    def inference_dataframe(
-        self, config: Dict[str, Any], df: pd.DataFrame
-    ) -> pd.DataFrame:
-        raise NotImplementedError()
+        with training_logger.test():
+            training_logger.log_metric(
+                "loss",
+                running_total_loss / iter,
+                step=config["step"],
+            )
+            training_logger.log_confusion_matrix(
+                y_true=test_labels,
+                y_predicted=test_preds_labels,
+                labels=['negative', 'positive'],
+                index_to_example_function = lambda idx: test_strings[idx] + " " + str(test_preds[idx, test_preds_labels[idx]]),
+                step=config["step"],
+                title="Test Set Confusion Matrix",
+            )
 
 
 if __name__ == "__main__":
-    config = Model2Hyperparameters(
-        use_amp=True,
-        pretrained_model="roberta-base",
-        save_model=True,
-        model_path="models/kaggle_model2/baseline",
-        max_cores=24,
-        max_seq_len=128,
-        num_epochs=5,
-        batch_size=32,
-        accum_for=1,
-        learning_rate=1e-5,
-        optimizer=torch.optim.Adam,
-    )
-
-    from src.data.entity_repository import EntityRepository
-
-    logging.basicConfig(level=logging.INFO)
-    model = KaggleModel2()
-    model.train(EntityRepository(), config)
+    bm.train = train
+    bm.validate = validate
+    bm.main()
