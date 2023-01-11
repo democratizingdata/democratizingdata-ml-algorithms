@@ -1,0 +1,6 @@
+name: base_mlflow_env
+channels:
+- conda-forge
+dependencies:
+- python=3.10
+- mlflow
