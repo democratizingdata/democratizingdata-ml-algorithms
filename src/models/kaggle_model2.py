@@ -9,12 +9,14 @@
 # competition. It uses pytorch and the transformers library.
 import json
 import logging
+import os
 from random import shuffle
 from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
 import torch
+import mlflow
 
 # from apex import amp
 # from apex.optimizers import FusedAdam
@@ -119,7 +121,12 @@ class KaggleModel2(bm.Model):
 
             self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
             if config["save_model"]:
-                model.save_pretrained(config["model_path"])
+                model.save_pretrained(
+                    os.path.join(
+                        config["model_path"], 
+                        training_logger.get_key(),
+                    )
+                )
 
     def _train_epoch(self, config, model, tokenizer, samples, opt, training_logger, curr_epoch) -> None:
         all_strings, all_labels = samples["entity"].values, samples["label"].values
