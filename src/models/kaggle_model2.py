@@ -178,14 +178,14 @@ class KaggleModel2(bm.Model):
                     with training_logger.train():
                         training_logger.log_metric(
                             "loss",
-                            loss.detach().numpy(),
+                            loss.detach().cpu().numpy(),
                             step=config["step"],
                         )
                         y_pred = softmax(
-                            model_outputs["logits"].detach().numpy(),
+                            model_outputs["logits"].detach().cpu().numpy(),
                             axis=1
                         )
-                        y_true = batch_labels.detach().numpy()
+                        y_true = batch_labels.detach().cpu().numpy()
 
                         # training_logger.log_confusion_matrix(
                         #     y_true=y_true,
@@ -255,7 +255,7 @@ class KaggleModel2(bm.Model):
 
                 test_preds.append(
                         softmax(
-                            model_outputs["logits"].detach().numpy(),
+                            model_outputs["logits"].detach().cpu().numpy(),
                             axis=1
                     )
                 )
