@@ -10,7 +10,7 @@ from src.data.repository import Repository
 import click
 from src.data.kaggle_repository import KaggleRepository
 
-VALID_REPOS = ["kaggle"]
+VALID_REPOS = ["kaggle", "entity"]
 REPO_HELP_TEXT = f"REPO indicates repository to use, valid options are: {','.join(VALID_REPOS)}"
 CONFIG_HELP_TEXT = "--config indicates the json config file to use. If not specified, an empty dictionary will be passed."
 NOT_IMPLEMENTED = "You need to implement a function called {0}. It should have the signature: `{0}(repository: Repository, config: Dict[str, Any]) -> None:`"
@@ -26,6 +26,9 @@ class SupportsLogging(Protocol):
         ...
 
     def log_figure(self, key: str, value: plt.Figure) -> None:
+        ...
+
+    def get_key(self) -> str:
         ...
 
 class Model(Protocol):
@@ -49,7 +52,7 @@ def resolve_repo(repo_name: str) -> Repository:
     elif repo_name == "entity":
         return EntityRepository()
     else:
-        raise ValueError(f"Unknown repository: {repo_name}")
+        raise ValueError(f"Unknown repository: {repo_name}. Valid options are: {','.join(VALID_REPOS)}")
 
 
 def resolve_training_logger(comet_workspace:str, comet_project:str) -> SupportsLogging:

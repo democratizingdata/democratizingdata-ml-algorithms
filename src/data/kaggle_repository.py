@@ -31,7 +31,7 @@ class KaggleRepository(Repository):
         )
 
         self.validation_dataframe_location = os.path.join(
-            self.local, "../../data/kaggle/validation_labels.csv"
+            self.local, "../../data/kaggle/validation.csv"
         )
 
         assert os.path.exists(

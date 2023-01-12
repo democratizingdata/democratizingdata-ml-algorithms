@@ -209,7 +209,7 @@ def evaluate_kaggle_private(
     )
 
     return ModelEvaluation(
-        output_statistics=validation_dataframe.loc[:, ["ids", "labels", "statistics"]],
+        output_statistics=validation_dataframe.loc[:, ["id", "label", "statistics"]],
         run_time=total,
         tp=global_stats.count("TP"),
         fp=global_stats.count("FP"),
