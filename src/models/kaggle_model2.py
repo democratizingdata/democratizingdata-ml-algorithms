@@ -96,9 +96,14 @@ class KaggleModel2(bm.Model):
             config["pretrained_model"], num_labels=2
         )
 
-        model = AutoModelForSequenceClassification.from_pretrained(
-            config["pretrained_model"], config=pretrained_config
-        )
+        if torch.cuda.is_available():
+            model = AutoModelForSequenceClassification.from_pretrained(
+                config["pretrained_model"], config=pretrained_config
+            ).cuda()
+        else:
+            model = AutoModelForSequenceClassification.from_pretrained(
+                config["pretrained_model"], config=pretrained_config
+            )
 
         tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
 
