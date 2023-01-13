@@ -5,13 +5,14 @@ from typing import Iterator, Optional, Tuple, Union
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import RandomOverSampler
 
 from src.data.repository import Repository
 
 logger = logging.getLogger("entity_repository")
 
 class EntityRepository(Repository):
-    def __init__(self):
+    def __init__(self, rebalance:bool=False):
         self.local = os.path.dirname(__file__)
 
         self.paths = [
@@ -33,7 +34,7 @@ class EntityRepository(Repository):
         )
 
         if not os.path.exists(self.train_dataframe_location):
-            self.build()
+            self.build(rebalance)
 
     def get_training_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         def iter_f():
@@ -59,7 +60,7 @@ class EntityRepository(Repository):
             return df
 
 
-    def build(self) -> None:
+    def build(self, rebalance:bool) -> None:
         """Builds a dataframe of the training/testing data and saves it to disk"""
 
         all_data = pd.concat(
@@ -67,6 +68,10 @@ class EntityRepository(Repository):
         ).drop_duplicates().rename(columns={"long": "entity", "is_dataset": "label"})
 
         train_df, test_df = train_test_split(all_data, test_size=0.2, random_state=42)
+
+        if rebalance:
+            ros = RandomOverSampler(random_state=42, sampling_strategy=1)
+            train_df, train_df["label"] = ros.fit_resample(train_df.drop(columns=["label"]), train_df["label"])
 
         train_df.to_csv(self.train_dataframe_location, index=False)
         test_df.to_csv(self.test_dataframe_location, index=False)
