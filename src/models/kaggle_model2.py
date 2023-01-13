@@ -123,7 +123,7 @@ class KaggleModel2(bm.Model):
             if config["save_model"]:
                 model.save_pretrained(
                     os.path.join(
-                        config["model_path"], 
+                        config["model_path"],
                         training_logger.get_key(),
                     )
                 )
@@ -194,13 +194,19 @@ class KaggleModel2(bm.Model):
                         )
                         y_true = batch_labels.detach().cpu().numpy()
 
-                        # training_logger.log_confusion_matrix(
-                        #     y_true=y_true,
-                        #     y_predicted=np.argmax(y_pred, axis=1),
-                        #     labels=['positive', 'negative'],
-                        #     index_to_example_function = lambda idx: train_strings[idx],
-                        #     step=config["step"],
-                        # )
+
+                        matches = (np.argmax(y_pred, axis=1) == y_true)
+                        training_logger.log_metric(
+                            "positive_accuracy",
+                            matches[y_true].mean(),
+                            step=config["step"],
+                        )
+
+                        training_logger.log_metric(
+                            "negative_accuracy",
+                            matches[~y_true].mean(),
+                            step=config["step"],
+                        )
 
 
                 if torch.cuda.is_available():
@@ -283,6 +289,22 @@ class KaggleModel2(bm.Model):
                 running_total_loss / iter,
                 step=config["step"],
             )
+
+            matches = (np.argmax(test_preds_labels, axis=1) == test_labels)
+            training_logger.log_metric(
+                "positive_accuracy",
+                matches[test_labels].mean(),
+                step=config["step"],
+            )
+
+            training_logger.log_metric(
+                "negative_accuracy",
+                matches[~test_labels].mean(),
+                step=config["step"],
+            )
+
+
+
             training_logger.log_confusion_matrix(
                 y_true=test_labels,
                 y_predicted=test_preds_labels,
