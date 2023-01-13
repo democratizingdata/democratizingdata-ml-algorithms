@@ -290,7 +290,7 @@ class KaggleModel2(bm.Model):
                 step=config["step"],
             )
 
-            matches = (np.argmax(test_preds_labels, axis=1) == test_labels)
+            matches = test_preds_labels == test_labels
             training_logger.log_metric(
                 "positive_accuracy",
                 matches[test_labels].mean(),
