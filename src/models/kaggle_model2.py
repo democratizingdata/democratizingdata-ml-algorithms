@@ -112,7 +112,7 @@ class KaggleModel2(bm.Model):
         opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
 
         # get all samples
-        train_samples = repository.get_training_data()
+        train_samples = repository.get_training_data(config.get("balance_labels", False))
         test_samples = repository.get_test_data()
 
         config["step"] = 0

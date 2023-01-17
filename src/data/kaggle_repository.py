@@ -59,7 +59,10 @@ class KaggleRepository(Repository):
         json_text = self.get_sample_text(parent_dir, doc_id)
         return self.process_text(json_text)
 
-    def get_training_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+    def get_training_data(self, batch_size: Optional[int] = None, balance_labels: Optional[bool] = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        if balance_labels:
+            raise ValueError("Label balancing not supported for kaggle data")
+        
         fetch_f = partial(self.retrieve_text, self.train_files_location)
 
         def iter_f():
