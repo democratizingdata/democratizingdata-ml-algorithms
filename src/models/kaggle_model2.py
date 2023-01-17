@@ -238,7 +238,6 @@ class KaggleModel2(bm.Model):
             desc="Epoch {}".format(curr_epoch),
         ) as t, torch.no_grad():
             for batch_idx_start in t:
-                iter += 1
                 batch_idx_end = min(
                     batch_idx_start + config["batch_size"], len(test_strings)
                 )

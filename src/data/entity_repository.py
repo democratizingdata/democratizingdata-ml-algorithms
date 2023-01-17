@@ -12,7 +12,7 @@ from src.data.repository import Repository
 logger = logging.getLogger("entity_repository")
 
 class EntityRepository(Repository):
-    def __init__(self, rebalance:bool=False):
+    def __init__(self):
         self.local = os.path.dirname(__file__)
 
         self.paths = [
@@ -29,22 +29,27 @@ class EntityRepository(Repository):
         self.train_dataframe_location = os.path.join(
             self.local, "../../data/entity_classification/training_data.csv"
         )
+        self.train_balanced_dataframe_location = os.path.join(
+            self.local, "../../data/entity_classification/training_data_balanced.csv"
+        )
         self.test_dataframe_location = os.path.join(
             self.local, "../../data/entity_classification/test_data.csv"
         )
 
         if not os.path.exists(self.train_dataframe_location):
-            self.build(rebalance)
+            self.build()
 
-    def get_training_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+    def get_training_data(self, batch_size: Optional[int] = None, rebalance:bool = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        path = self.train_balanced_dataframe_location if rebalance else self.train_dataframe_location
+
         def iter_f():
-            for batch in pd.read_csv(self.train_dataframe_location, chunksize=batch_size):
+            for batch in pd.read_csv(path, chunksize=batch_size):
                 yield batch
 
         if batch_size:
             return iter_f()
         else:
-            df = pd.read_csv(self.train_dataframe_location)
+            df = pd.read_csv(path)
             return df
 
     def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
@@ -60,7 +65,7 @@ class EntityRepository(Repository):
             return df
 
 
-    def build(self, rebalance:bool) -> None:
+    def build(self) -> None:
         """Builds a dataframe of the training/testing data and saves it to disk"""
 
         all_data = pd.concat(
@@ -68,13 +73,12 @@ class EntityRepository(Repository):
         ).drop_duplicates().rename(columns={"long": "entity", "is_dataset": "label"})
 
         train_df, test_df = train_test_split(all_data, test_size=0.2, random_state=42)
-
-        if rebalance:
-            ros = RandomOverSampler(random_state=42, sampling_strategy=1)
-            train_df, train_df["label"] = ros.fit_resample(train_df.drop(columns=["label"]), train_df["label"])
-
         train_df.to_csv(self.train_dataframe_location, index=False)
         test_df.to_csv(self.test_dataframe_location, index=False)
+
+        ros = RandomOverSampler(random_state=42, sampling_strategy=1)
+        train_df, train_df["label"] = ros.fit_resample(train_df.drop(columns=["label"]), train_df["label"])
+        train_df.to_csv(self.train_balanced_dataframe_location, index=False)
 
 
     def __repr__(self) -> str:
