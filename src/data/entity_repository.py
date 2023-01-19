@@ -39,8 +39,8 @@ class EntityRepository(Repository):
         if not os.path.exists(self.train_dataframe_location):
             self.build()
 
-    def get_training_data(self, batch_size: Optional[int] = None, rebalance:bool = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        path = self.train_balanced_dataframe_location if rebalance else self.train_dataframe_location
+    def get_training_data(self, batch_size: Optional[int] = None, balance_labels:bool = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        path = self.train_balanced_dataframe_location if balance_labels else self.train_dataframe_location
 
         def iter_f():
             for batch in pd.read_csv(path, chunksize=batch_size):
