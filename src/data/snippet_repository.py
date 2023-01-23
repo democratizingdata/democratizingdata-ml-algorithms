@@ -11,6 +11,8 @@ from unidecode import unidecode
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import pandas as pd
+import regex as re
+import spacy
 from sklearn.model_selection import train_test_split
 
 from src.data.repository import Repository
@@ -20,23 +22,18 @@ logger = logging.getLogger("snippet_repository")
 class SnippetRepository(Repository):
     """Repository for serving training snippets.
 
-    Based on the 1st place kaggle solution:
-    https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/main/1st%20ZALO%20FTW/notebooks/get_candidate_labels.ipynb
 
-    We want to aggressively extract positive labels. If the label isn't similar
-    to any of the training labels, then don't use it for training. Instead,
-    use it for testing/validation. We want to avoid accidently including samples
-    as True Negatives that are actually positive samples.
 
     """
 
-    def __init__(self) -> None:
+    def __init__(self, mode) -> None:
         self.local = os.path.dirname(__file__)
         self.train_labels_location = os.path.join(
             self.local, "../../data/kaggle/train.csv"
         )
         self.train_files_location = os.path.join(self.local, "../../data/kaggle/train")
         self.validation_files_location = os.path.join(self.local, "../../data/kaggle/validation")
+
         self.train_dataframe_location = os.path.join(
             self.local, "../../data/kaggle/train_snippet_dataframe.csv"
         )
@@ -59,7 +56,72 @@ class SnippetRepository(Repository):
     def get_validation_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         ...
 
+    def classify_text(self, nlp, text: str) -> Tuple[List[str], List[str], List[str]]:
+
+        ...
+
+
+    @staticmethod
+    def detect_labels(labels:List[re.Pattern], sentence:str) -> List[List[str]]:
+        return list(map(
+            lambda match: match.captures(), # It's possible to have more than one match
+            filter(
+                bool,
+                map(
+                    lambda rl: rl.search(sentence),
+                    labels
+                )
+            )
+        ))
+
+
+    def tag_sentence(
+        self,
+        regex_labels:List[re.Pattern],
+        sentence:spacy.tokens.span.Span
+    ) -> Tuple[List[str], List[str], List[str]]:
+
+        # find matches for each label and sort by length, longest first
+        # shorter matches might be a subset of a longer match. So, we'll
+        # prefer the longer matches first.
+        match_lists = sorted(
+            SnippetRepository.detect_labels(regex_labels, sentence.text),
+            key=lambda x: max(map(len, x)),
+            reverse=True
+        )
+
+        tokens = [token.text for token in sentence]
+        tags = [token.tag_ for token in sentence]
+        ner_tags = ["O"] * len(sentence) # assume no match
+
+        for matches in match_lists:
+            for match in matches:
+                label_tokens = self.nlp(match)
+                start_idx = tokens.index(label_tokens[0].text)
+                idxs = list(range(start_idx, start_idx + len(label_tokens)))
+
+
+                first_tag = ner_tags[start_idx]
+                prev_tag = ner_tags[start_idx - 1] if start_idx > 0 else "O"
+                # If there are any tokens that are already marked then this match
+                # could be a subset of another match
+                if not any(map(lambda x: x!="O", ner_tags[start_idx: start_idx + len(label_tokens)])):
+                    if prev_tag=="O":
+                        ner_tags[start_idx] = "I-DAT"
+                    else:
+                        ner_tags[start_idx] = "B-DAT"
+
+                    for idx in idxs[1:]:
+                        ner_tags[idx] = "I-DAT"
+
+        return tokens, tags, ner_tags
+
     def build() -> None:
+        # get training data from kaggle
+        # get additional candidate labels using algorithm from kaggle model 1
+
+
+
         pass
 
 
