@@ -49,6 +49,7 @@ CONNECTING_WORDS = [
     "in",
     "of",
     "the",
+    "on",
 ]
 
 # this makes the string r"|{val}\ " for each of the CONNECTING_WORDS

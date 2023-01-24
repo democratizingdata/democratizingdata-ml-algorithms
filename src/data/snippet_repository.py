@@ -16,6 +16,7 @@ import spacy
 from sklearn.model_selection import train_test_split
 
 from src.data.repository import Repository
+from src.models.regex_model import RegexModel
 
 logger = logging.getLogger("snippet_repository")
 
@@ -26,7 +27,7 @@ class SnippetRepository(Repository):
 
     """
 
-    def __init__(self, mode) -> None:
+    def __init__(self, mode, build_kwargs:Optional[Dict[str, A]]=None) -> None:
         self.local = os.path.dirname(__file__)
         self.train_labels_location = os.path.join(
             self.local, "../../data/kaggle/train.csv"
@@ -116,11 +117,34 @@ class SnippetRepository(Repository):
 
         return tokens, tags, ner_tags
 
-    def build() -> None:
+    def build(self, filter_keywords:List[str]) -> None:
         # get training data from kaggle
+        kaggle_train = pd.read_csv(self.train_labels_location)
+
+        def aggregate_clean_label(row: pd.DataFrame):
+            labels = list(map(lambda x: x.lower().strip(), row["dataset_label"].unique()))
+            return "|".join(labels)
+
+        model = RegexModel({"keywords": filter_keywords})
+        def extract_extra_candidates(doc_id:str) -> str:
+            with open(os.path.join("../data/kaggle/train", doc_id + ".json"), "r") as f:
+                text = " ".join([sec["text"].replace("\n", " ") for sec in json.load(f)])
+
+            return model.inference({}, pd.DataFrame({"text": [text]}))["model_predictions"].values[0]
+
+        unique_labels = kaggle_train.groupby("Id").apply(aggregate_clean_label)
+
+        all_df = pd.DataFrame({"id": kaggle_train["Id"].unique()})
+        all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
+        all_df["extra_labels"] = all_df["id"].apply(extract_extra_candidates)
+
+
+
         # get additional candidate labels using algorithm from kaggle model 1
-
-
+        # run spacy on text to get tokens/sentences
+        # tag sentences
+        # filter out sentences that are additional candidates from kaggle model 1 to a the validation set
+        # save to tsv
 
         pass
 
