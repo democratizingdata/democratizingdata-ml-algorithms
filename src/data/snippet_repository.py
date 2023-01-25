@@ -138,6 +138,8 @@ class SnippetRepository(Repository):
         all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
         all_df["extra_labels"] = all_df["id"].apply(extract_extra_candidates)
 
+        def convert_document_to_samples(row:pd.DataFrame):
+            pass
 
 
         # get additional candidate labels using algorithm from kaggle model 1
