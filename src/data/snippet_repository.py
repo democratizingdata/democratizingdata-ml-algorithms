@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from unidecode import unidecode
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import pandas as pd
 import regex as re
@@ -27,7 +27,7 @@ class SnippetRepository(Repository):
 
     """
 
-    def __init__(self, mode, build_kwargs:Optional[Dict[str, A]]=None) -> None:
+    def __init__(self, mode, build_kwargs:Optional[Dict[str, Any]]=None) -> None:
         self.local = os.path.dirname(__file__)
         self.train_labels_location = os.path.join(
             self.local, "../../data/kaggle/train.csv"
@@ -56,11 +56,6 @@ class SnippetRepository(Repository):
 
     def get_validation_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         ...
-
-    def classify_text(self, nlp, text: str) -> Tuple[List[str], List[str], List[str]]:
-
-        ...
-
 
     @staticmethod
     def detect_labels(labels:List[re.Pattern], sentence:str) -> List[List[str]]:
@@ -125,30 +120,64 @@ class SnippetRepository(Repository):
             labels = list(map(lambda x: x.lower().strip(), row["dataset_label"].unique()))
             return "|".join(labels)
 
-        model = RegexModel({"keywords": filter_keywords})
-        def extract_extra_candidates(doc_id:str) -> str:
+        def get_text(doc_id:str) -> str:
             with open(os.path.join("../data/kaggle/train", doc_id + ".json"), "r") as f:
-                text = " ".join([sec["text"].replace("\n", " ") for sec in json.load(f)])
+                text = unidecode(" ".join([sec["text"].replace("\n", " ") for sec in json.load(f)]))
+            return text
 
+        model = RegexModel({"keywords": filter_keywords})
+        def extract_extra_candidates(text:str) -> str:
             return model.inference({}, pd.DataFrame({"text": [text]}))["model_predictions"].values[0]
 
         unique_labels = kaggle_train.groupby("Id").apply(aggregate_clean_label)
 
         all_df = pd.DataFrame({"id": kaggle_train["Id"].unique()})
         all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
-        all_df["extra_labels"] = all_df["id"].apply(extract_extra_candidates)
+        all_df["text"] = all_df["id"].apply(get_text)
+        all_df["extra_labels"] = all_df["text"].apply(extract_extra_candidates)
+
 
         def convert_document_to_samples(row:pd.DataFrame):
-            pass
+            text = row["text"]
+            doc = self.nlp(text)
+            samples = []
+            labels = list(map(RegexModel.regexify_keyword, row["label"].split("|")))
+            candidate_labels = list(map(RegexModel.regexify_keyword, row["extra_labels"].split("|")))
+            for sentence in doc.sents:
+                tokens, tags, label_ner_tags = self.tag_sentence(
+                    labels,
+                    sentence
+                )
+                tokens, tags, candidate_ner_tags = self.tag_sentence(
+                    candidate_labels,
+                    sentence
+                )
 
+                # if there are only tags form the labels, then
+                # we'll use it training as a positive sample.
+                # if there are tags from the candidate labels,
+                # then we'll use it in the validation set as a
+                # positive sample.
+                # otherwise, it will be a negative sample
+                contains_candidate = any(map(lambda x: x!="O", candidate_ner_tags))
+                ner_tags = candidate_ner_tags if contains_candidate else label_ner_tags
 
-        # get additional candidate labels using algorithm from kaggle model 1
-        # run spacy on text to get tokens/sentences
-        # tag sentences
-        # filter out sentences that are additional candidates from kaggle model 1 to a the validation set
-        # save to tsv
+                tagged_formatted_tokens = "\n".join(starmap(
+                    lambda token, tag, ner_tag: f"{token}\t{tag}\t{ner_tag}",
+                    zip(tokens, tags, ner_tags)
+                ))
 
-        pass
+                samples.append({
+                    "sample": tagged_formatted_tokens,
+                    "is_validation": contains_candidate, 
+                })
+            return samples
+
+        all_df["tokenized_samples"] = all_df.apply(convert_document_to_samples, axis=1)
+
+        # flatten the list of samples per document and save to splitting out the
+        # candidate labels into a separate set, and further splitting the training
+        # set into a training and test set.
 
 
     @staticmethod
@@ -220,11 +249,3 @@ class SnippetRepository(Repository):
 
 
 if __name__=="__main__":
-    results = SnippetRepository.extract_snippets(
-        "data/kaggle/train",
-        "d0fa7568-7d8e-4db9-870f-f9c6f668c17b",
-        window_size=30,
-        step_size=15
-    )
-
-    print(results)
