@@ -1,7 +1,7 @@
 # Based on the dataset used by kaggle model 1
 # https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/main/1st%20ZALO%20FTW/notebooks/get_candidate_labels.ipynb
 
-
+from enum import Enum
 from functools import partial
 from itertools import starmap
 import json
@@ -14,11 +14,17 @@ import pandas as pd
 import regex as re
 import spacy
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 from src.data.repository import Repository
 from src.models.regex_model import RegexModel
 
 logger = logging.getLogger("snippet_repository")
+
+class SnippetRepositoryMode(Enum):
+    NER = "ner"
+    CLASSIFICATION = "classification"
+    MASKED_LM = "masked_lm"
 
 class SnippetRepository(Repository):
     """Repository for serving training snippets.
@@ -27,25 +33,23 @@ class SnippetRepository(Repository):
 
     """
 
-    def __init__(self, mode, build_kwargs:Optional[Dict[str, Any]]=None) -> None:
+    def __init__(self, mode:SnippetRepositoryMode, build_options:Optional[Dict[str, Any]]=None) -> None:
+        self.mode = mode
         self.local = os.path.dirname(__file__)
-        self.train_labels_location = os.path.join(
-            self.local, "../../data/kaggle/train.csv"
-        )
-        self.train_files_location = os.path.join(self.local, "../../data/kaggle/train")
-        self.validation_files_location = os.path.join(self.local, "../../data/kaggle/validation")
+        with_local_path = partial(os.path.join, self.local)
 
-        self.train_dataframe_location = os.path.join(
-            self.local, "../../data/kaggle/train_snippet_dataframe.csv"
-        )
+        self.train_labels_location = with_local_path("../../data/kaggle/train.csv")
 
-        self.test_dataframe_location = os.path.join(
-            self.local, "../../data/kaggle/test_snippet_dataframe.csv"
-        )
+        self.train_files_location = with_local_path("../../data/snippets/kaggle_snippets_train")
+        self.test_files_location = with_local_path("../../data/snippets/kaggle_snippets_test")
+        self.validation_files_location = with_local_path("../../data/snippets/kaggle_snippets_validation")
 
-        self.validation_dataframe_location = os.path.join(
-            self.local, "../../data/kaggle/validation_labels.csv"
-        )
+        make_dir_f = partial(os.makedirs, exist_ok=True)
+        list(map(make_dir_f, [self.train_files_location, self.test_files_location, self.validation_files_location]))
+
+        if len(os.listdir(self.train_files_location))==0:
+            self.nlp = spacy.load("en_core_web_trf")
+            self.build(build_options)
 
 
     def get_training_data(self, batch_size: Optional[int] = None, rebalance: Optional[bool] = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
@@ -92,10 +96,12 @@ class SnippetRepository(Repository):
 
         for matches in match_lists:
             for match in matches:
-                label_tokens = self.nlp(match)
-                start_idx = tokens.index(label_tokens[0].text)
-                idxs = list(range(start_idx, start_idx + len(label_tokens)))
-
+                try:
+                    label_tokens = self.nlp(match)
+                    start_idx = tokens.index(label_tokens[0].text)
+                    idxs = list(range(start_idx, start_idx + len(label_tokens)))
+                except Exception:
+                    continue
 
                 first_tag = ner_tags[start_idx]
                 prev_tag = ner_tags[start_idx - 1] if start_idx > 0 else "O"
@@ -112,8 +118,9 @@ class SnippetRepository(Repository):
 
         return tokens, tags, ner_tags
 
-    def build(self, filter_keywords:List[str]) -> None:
+    def build(self, build_options:Dict[str, Any]) -> None:
         # get training data from kaggle
+        print("Loading Kaggle training labels...")
         kaggle_train = pd.read_csv(self.train_labels_location)
 
         def aggregate_clean_label(row: pd.DataFrame):
@@ -121,28 +128,49 @@ class SnippetRepository(Repository):
             return "|".join(labels)
 
         def get_text(doc_id:str) -> str:
-            with open(os.path.join("../data/kaggle/train", doc_id + ".json"), "r") as f:
+            with open(os.path.join(self.local, "../../data/kaggle/train", doc_id + ".json"), "r") as f:
                 text = unidecode(" ".join([sec["text"].replace("\n", " ") for sec in json.load(f)]))
             return text
 
-        model = RegexModel({"keywords": filter_keywords})
+        model = RegexModel({"keywords": build_options["keywords"]})
         def extract_extra_candidates(text:str) -> str:
-            return model.inference({}, pd.DataFrame({"text": [text]}))["model_predictions"].values[0]
+            return model.inference({}, pd.DataFrame({"text": [text]}))["model_prediction"].values[0]
 
         unique_labels = kaggle_train.groupby("Id").apply(aggregate_clean_label)
 
         all_df = pd.DataFrame({"id": kaggle_train["Id"].unique()})
         all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
-        all_df["text"] = all_df["id"].apply(get_text)
-        all_df["extra_labels"] = all_df["text"].apply(extract_extra_candidates)
+        print("Getting text files")
+        tqdm.pandas()
+        all_df["text"] = all_df["id"].progress_apply(get_text)
+        print("Getting candidate labels")
+        tqdm.pandas()
+        all_df["extra_labels"] = all_df["text"].progress_apply(extract_extra_candidates)
 
 
         def convert_document_to_samples(row:pd.DataFrame):
             text = row["text"]
             doc = self.nlp(text)
             samples = []
-            labels = list(map(RegexModel.regexify_keyword, row["label"].split("|")))
-            candidate_labels = list(map(RegexModel.regexify_keyword, row["extra_labels"].split("|")))
+            labels = list(
+                map(
+                    re.compile,
+                    map(
+                        RegexModel.regexify_keyword,
+                        row["label"].split("|")
+                    )
+                )
+            )
+
+            candidate_labels = list(
+                map(
+                    re.compile,
+                    map(
+                        RegexModel.regexify_keyword,
+                        row["extra_labels"].split("|")
+                    )
+                )
+            )
             for sentence in doc.sents:
                 tokens, tags, label_ner_tags = self.tag_sentence(
                     labels,
@@ -169,83 +197,35 @@ class SnippetRepository(Repository):
 
                 samples.append({
                     "sample": tagged_formatted_tokens,
-                    "is_validation": contains_candidate, 
+                    "is_validation": contains_candidate,
                 })
             return samples
 
-        all_df["tokenized_samples"] = all_df.apply(convert_document_to_samples, axis=1)
+        print("Converting documents to samples")
+        tqdm.pandas()
+        all_df["tokenized_samples"] = all_df.progress_apply(convert_document_to_samples, axis=1)
 
-        # flatten the list of samples per document and save to splitting out the
-        # candidate labels into a separate set, and further splitting the training
-        # set into a training and test set.
+        def save_samples(row:pd.DataFrame) -> None:
+            save_train_path = os.path.join(
+                self.train_files_location,
+                row["id"] + ".tsv"
+            )
 
+            save_validation_path = os.path.join(
+                self.train_files_location,
+                row["id"] + ".tsv"
+            )
 
-    @staticmethod
-    def preprocess_text(text:List[Dict[str, str]]) -> str:
-        """Clean text for comparison."""
-        full_text = " ".join([section["text"].strip() for section in text])
-        return unidecode(full_text)
+            for sample in row["tokenized_samples"]:
+                save_path = save_validation_path if sample["is_validation"] else save_train_path
+                with open(save_path, "a") as f:
+                    f.write(sample["sample"])
 
-    @staticmethod
-    def tokenize_text(text:str) -> List[str]:
-        """Tokenize text for comparison."""
-        return text.split()
-
-    @staticmethod
-    def gen_sliding_window(sample_len:int, win_size:int, step_size:int) -> List[Tuple[int, int]]:
-        """Generate sliding windows indicies for extracting subsets of the text."""
-
-        starts = filter(
-            lambda x: x + win_size <= sample_len,
-            range(0, sample_len, step_size)
-        )
-        windows = list(map(
-            lambda x: [x, x + win_size],
-            starts
-        ))
-
-        if windows[-1][1] != sample_len:
-            windows.append((sample_len - win_size, sample_len))
-
-        return windows
-
-
-    @staticmethod
-    def extract_snippets(
-        location:str,
-        doc_id:str,
-        window_size:int=30,
-        step_size:Optional[int]=None
-    ) -> pd.DataFrame:
-        """Extract snippets from a given document."""
-
-        step_size = step_size or window_size // 2
-
-        with open(os.path.join(location, f"{doc_id}.json")) as f:
-            document = json.load(f)
-
-        full_text = SnippetRepository.preprocess_text(document)
-        tokens = SnippetRepository.tokenize_text(full_text)
-
-        windows = SnippetRepository.gen_sliding_window(
-            len(tokens),
-            window_size,
-            step_size,
-        )
-
-        snippets = list(starmap(
-            lambda start, end: " ".join(tokens[start:end]),
-            windows
-        ))
-        n = len(snippets)
-        return pd.DataFrame({
-            "document_id": [doc_id] * n,
-            "text": snippets,
-            "window": windows,
-            "label": ["unknown"] * n,
-        })
-
-
+        tqdm.pandas()
+        all_df.progress_apply(save_samples, axis=1)
 
 
 if __name__=="__main__":
+    repo = SnippetRepository(mode=SnippetRepositoryMode.NER, build_options=dict(
+        keywords=["dataset", "data set", "data sets", "datasets"]
+    ))
