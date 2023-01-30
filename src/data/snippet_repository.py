@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 import pandas as pd
 import regex as re
 import spacy
+from pandarallel import pandarallel
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -100,7 +101,8 @@ class SnippetRepository(Repository):
                     label_tokens = self.nlp(match)
                     start_idx = tokens.index(label_tokens[0].text)
                     idxs = list(range(start_idx, start_idx + len(label_tokens)))
-                except Exception:
+                except ValueError:
+                    # print(f"Could not find {str(match)} in sentence: ",  sentence.text)
                     continue
 
                 first_tag = ner_tags[start_idx]
@@ -134,7 +136,7 @@ class SnippetRepository(Repository):
 
         model = RegexModel({"keywords": build_options["keywords"]})
         def extract_extra_candidates(text:str) -> str:
-            return model.inference({}, pd.DataFrame({"text": [text]}))["model_prediction"].values[0]
+            return  "|".join([v.strip() for v in model.inference({}, pd.DataFrame({"text": [text]}))["model_prediction"].values[0].split("|")])
 
         unique_labels = kaggle_train.groupby("Id").apply(aggregate_clean_label)
 
@@ -142,9 +144,11 @@ class SnippetRepository(Repository):
         all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
         print("Getting text files")
         tqdm.pandas()
+        # pandarallel.initialize(progress_bar=True)
         all_df["text"] = all_df["id"].progress_apply(get_text)
         print("Getting candidate labels")
-        tqdm.pandas()
+        # pandarallel.initialize(progress_bar=True)
+        # tqdm.pandas()
         all_df["extra_labels"] = all_df["text"].progress_apply(extract_extra_candidates)
 
 
@@ -199,11 +203,16 @@ class SnippetRepository(Repository):
                     "sample": tagged_formatted_tokens,
                     "is_validation": contains_candidate,
                 })
+
+            if len(samples) == 0:
+                print("No samples found for document: ", row["id"])
+
             return samples
 
         print("Converting documents to samples")
         tqdm.pandas()
-        all_df["tokenized_samples"] = all_df.progress_apply(convert_document_to_samples, axis=1)
+        # pandarallel.initialize(progress_bar=True)
+        all_df["tokenized_samples"] = all_df.iloc[:10, :].progress_apply(convert_document_to_samples, axis=1)
 
         def save_samples(row:pd.DataFrame) -> None:
             save_train_path = os.path.join(
@@ -216,16 +225,24 @@ class SnippetRepository(Repository):
                 row["id"] + ".tsv"
             )
 
-            for sample in row["tokenized_samples"]:
-                save_path = save_validation_path if sample["is_validation"] else save_train_path
-                with open(save_path, "a") as f:
-                    f.write(sample["sample"])
+            try:
+                for sample in row["tokenized_samples"]:
+                    save_path = save_validation_path if sample["is_validation"] else save_train_path
+                    with open(save_path, "a") as f:
+                        f.write(sample["sample"])
+            except:
+                print(row)
 
         tqdm.pandas()
         all_df.progress_apply(save_samples, axis=1)
 
 
 if __name__=="__main__":
+    keywords = [
+        "Study", "Studies", "Survey", "Surveys", "Dataset", "Datasets", 
+        "Database", "Databases", "Data Set", "Data System", "Data Systems"
+    ]
+
     repo = SnippetRepository(mode=SnippetRepositoryMode.NER, build_options=dict(
-        keywords=["dataset", "data set", "data sets", "datasets"]
+        keywords=keywords
     ))
