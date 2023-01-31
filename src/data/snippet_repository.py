@@ -4,17 +4,20 @@
 from enum import Enum
 from functools import partial
 from itertools import starmap
+import itertools
 import json
 import logging
 import os
 from unidecode import unidecode
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 import regex as re
 import spacy
 from pandarallel import pandarallel
 from sklearn.model_selection import train_test_split
+from spacy.tokens import Doc
 from tqdm import tqdm
 
 from src.data.repository import Repository
@@ -70,6 +73,8 @@ def tag_sentence(
         for match in matches:
             try:
                 label_tokens = nlp(match)
+                if len(label_tokens) == 0:
+                    raise ValueError(label_tokens)
                 start_idx = tokens.index(label_tokens[0].text)
                 idxs = list(range(start_idx, start_idx + len(label_tokens)))
             except ValueError:
@@ -93,8 +98,7 @@ def tag_sentence(
 
 
 def convert_document_to_samples(nlp:spacy.language.Language, row:pd.DataFrame):
-    text = row["text"]
-    doc = nlp(text)
+    doc = row["tokenized"]
     samples = []
     labels = list(
         map(
@@ -191,27 +195,32 @@ class SnippetRepository(Repository):
 
     """
 
-    def __init__(self, mode:SnippetRepositoryMode, build_options:Optional[Dict[str, Any]]=None) -> None:
+    def __init__(self, mode:SnippetRepositoryMode, build_options:Optional[Dict[str, Any]]=dict()) -> None:
         self.mode = mode
         self.local = os.path.dirname(__file__)
         with_local_path = partial(os.path.join, self.local)
 
         self.train_labels_location = with_local_path("../../data/kaggle/train.csv")
 
+        self.all_ids = pd.read_csv(self.train_labels_location)["id"].values
+        self.train_ids, self.test_ids = train_test_split(self.all_ids, test_size=0.2, random_state=42)
+
         self.train_files_location = with_local_path("../../data/snippets/kaggle_snippets_train")
-        self.test_files_location = with_local_path("../../data/snippets/kaggle_snippets_test")
         self.validation_files_location = with_local_path("../../data/snippets/kaggle_snippets_validation")
 
         make_dir_f = partial(os.makedirs, exist_ok=True)
-        list(map(make_dir_f, [self.train_files_location, self.test_files_location, self.validation_files_location]))
+        list(map(make_dir_f, [self.train_files_location, self.validation_files_location]))
 
-        # if len(os.listdir(self.train_files_location))==0:
-        self.nlp = spacy.load("en_core_web_trf")
-        self.build(build_options)
+        if len(os.listdir(self.train_files_location)) == 0 or len(os.listdir(self.validation_files_location)) == 0 or len(build_options):
+            self.nlp = spacy.load("en_core_web_sm")
+            self.build(build_options)
 
 
     def get_training_data(self, batch_size: Optional[int] = None, rebalance: Optional[bool] = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        ...
+        pass
+
+
+
 
     def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         ...
@@ -232,65 +241,113 @@ class SnippetRepository(Repository):
             )
         ))
 
-
-
-
     def build(self, build_options:Dict[str, Any]) -> None:
         # get training data from kaggle
+        process_n = build_options.get("process_n", 100)
+
+
         print("Loading Kaggle training labels...")
-        kaggle_train = pd.read_csv(self.train_labels_location)
+        all_kaggle_train = pd.read_csv(self.train_labels_location)
+        split_training_data = np.array_split(all_kaggle_train, len(all_kaggle_train)//process_n)
+        del all_kaggle_train
 
-        def aggregate_clean_label(row: pd.DataFrame):
-            labels = list(map(lambda x: x.lower().strip(), row["dataset_label"].unique()))
-            return "|".join(labels)
+        for kaggle_train in tqdm(split_training_data, desc="Total Progress"):
+            def aggregate_clean_label(row: pd.DataFrame):
+                labels = list(map(lambda x: x.lower().strip(), row["dataset_label"].unique()))
+                return "|".join(labels)
 
-        existing_files = list(map(
-            lambda x: x.split(".")[0],
-            os.listdir(self.train_files_location)
-        ))
+            existing_files = list(map(
+                lambda x: x.split(".")[0],
+                os.listdir(self.train_files_location)
+            ))
 
-        existing_files.extend(list(map(
-            lambda x: x.split(".")[0],
-            os.listdir(self.validation_files_location)
-        )))
+            existing_files.extend(list(map(
+                lambda x: x.split(".")[0],
+                os.listdir(self.validation_files_location)
+            )))
 
-        model = RegexModel(config=dict())
-        extract_extra_candidates_f = partial(extract_extra_candidates, model, build_options["keywords"])
+            model = RegexModel(config=dict())
+            extract_extra_candidates_f = partial(extract_extra_candidates, model, build_options["keywords"])
 
-        unique_labels = kaggle_train.groupby("Id").apply(aggregate_clean_label)
+            unique_labels = kaggle_train.groupby("Id").apply(aggregate_clean_label)
 
-        ids_to_work_on = list(filter(
-            lambda x: x not in existing_files,
-            kaggle_train["Id"].unique()
-        ))
+            ids_to_work_on = list(filter(
+                lambda x: x not in existing_files,
+                kaggle_train["Id"].unique()
+            ))[:5000]
 
-        all_df = pd.DataFrame({"id": ids_to_work_on}).iloc[:100, :]
-        all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
-
-
-        print("Getting text files")
-        pandarallel.initialize(progress_bar=True)
-        get_text_f = partial(get_text_per_row, os.path.join(self.local, "../../data/kaggle/train"))
-        all_df["text"] = all_df.parallel_apply(get_text_f, axis=1)
+            all_df = pd.DataFrame({"id": ids_to_work_on})
+            all_df["label"] = all_df["id"].apply(lambda x: unique_labels[x])
 
 
-        print("Getting candidate labels")
-        pandarallel.initialize(progress_bar=True)
-        all_df["extra_labels"] = all_df.parallel_apply(extract_extra_candidates_f, axis=1)
+            print("Getting text files")
+            pandarallel.initialize(progress_bar=True)
+            get_text_f = partial(get_text_per_row, os.path.join(self.local, "../../data/kaggle/train"))
+            all_df["text"] = all_df.parallel_apply(get_text_f, axis=1)
+
+            # export OPENBLAS_NUM_THREADS=1, sometimes this helps with parallelization
+            # for some reason spacy's large model doesn't work with parallelization
+            # so for now initialize with the small model
+            print("\nRunning spaCy tokenizer/tagger")
+            all_texts = all_df["text"].tolist()
+            all_ids = all_df["id"].tolist()
+            expanded_texts = []
+            expanded_ids = []
+            max_tokens = 10_000
+            for text, id in zip(all_texts, all_ids):
+                tokens = text.split()
+
+                if len(tokens) > max_tokens:
+                    token_sequences = [" ".join(tokens[i:i+max_tokens]) for i in range(0, len(tokens), max_tokens)]
+                    expanded_texts.extend(token_sequences)
+                    expanded_ids.extend([id for _ in range(len(token_sequences))])
+                else:
+                    expanded_texts.append(text)
+                    expanded_ids.append(id)
+
+            assert len(expanded_texts) == len(expanded_ids), f"Something went wrong with the expansion of texts and ids {len(expanded_texts)} vs {len(expanded_ids)}"
+            pipeline_generator = self.nlp.pipe(
+                expanded_texts,
+                batch_size=5,
+                n_process=4,
+                disable=["lemmatizer", "ner", "textcat"]
+            )
+
+            combined_tokens = []
+            combined_ids = []
+            for id, docs in itertools.groupby(zip(expanded_ids, tqdm(pipeline_generator, total=len(expanded_texts))), lambda x: x[0]):
+                docs = list(map(lambda x: x[1], docs))
+                combined_ids.append(id)
+                combined_tokens.append(Doc.from_docs(docs))
+
+            all_df["tokenized"] = combined_tokens
+            # pipeline_generator = self.nlp.pipe(
+            #     all_texts,
+            #     batch_size=5,
+            #     n_process=4,
+            #     disable=["lemmatizer", "ner", "textcat"]
+            # )
+            # all_df["tokenized"] = [d for d in tqdm(pipeline_generator, total=len(all_texts))]
+            # pandarallel.initialize(progress_bar=True)
+            # all_df["tokenized"] = all_df["text"].parallel_apply(self.nlp)
+            del all_texts, all_ids, expanded_texts, expanded_ids, combined_tokens, combined_ids
+
+            print("\nGetting candidate labels")
+            pandarallel.initialize(progress_bar=True)
+            all_df["extra_labels"] = all_df.parallel_apply(extract_extra_candidates_f, axis=1)
+
+            print("\nConverting documents to samples")
+            convert_document_to_samples_f = partial(convert_document_to_samples, self.nlp)
+            pandarallel.initialize(progress_bar=True)
+            all_df["tokenized_samples"] = all_df.parallel_apply(convert_document_to_samples_f, axis=1)
+            # tqdm.pandas()
+            # all_df["tokenized_samples"] = all_df.progress_apply(convert_document_to_samples_f, axis=1)
 
 
-        print("Converting documents to samples")
-        convert_document_to_samples_f = partial(convert_document_to_samples, self.nlp)
-        # pandarallel.initialize(progress_bar=True)
-        # all_df["tokenized_samples"] = all_df.parallel_apply(convert_document_to_samples_f, axis=1)
-        tqdm.pandas()
-        all_df["tokenized_samples"] = all_df.progress_apply(convert_document_to_samples_f, axis=1)
-
-
-        print("Saving samples")
-        pandarallel.initialize(progress_bar=True, use_memory_fs=False)
-        save_samples_f = partial(save_samples, self.train_files_location, self.validation_files_location)
-        all_df.parallel_apply(save_samples_f, axis=1)
+            print("\nSaving samples")
+            pandarallel.initialize(progress_bar=True, use_memory_fs=False)
+            save_samples_f = partial(save_samples, self.train_files_location, self.validation_files_location)
+            all_df.parallel_apply(save_samples_f, axis=1)
 
 
 

@@ -50,6 +50,7 @@ CONNECTING_WORDS = [
     "of",
     "the",
     "on",
+    "to",
 ]
 
 # this makes the string r"|{val}\ " for each of the CONNECTING_WORDS
