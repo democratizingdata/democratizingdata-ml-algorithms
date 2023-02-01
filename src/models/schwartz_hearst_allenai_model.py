@@ -34,12 +34,9 @@ def infer_sample(nlp, char_limit: int, text: List[Dict[str, str]]) -> str:
 
         if len(all_text) > char_limit:
             extractions.update(
-                extract_abbreviation_definition_pairs(
-                    nlp, text=all_text[:char_limit]
-                )
+                extract_abbreviation_definition_pairs(nlp, text=all_text[:char_limit])
             )
             all_text = all_text[char_limit:]
-
 
     while all_text:
         extractions.update(

@@ -49,8 +49,6 @@ class ModelEvaluation:
             fn=json_encoding["fn"],
         )
 
-
-
     def __repr__(self) -> str:
         return f"""
         Model Evaluation:
@@ -129,7 +127,7 @@ def calculate_statistics(
 
 
 def evaluate_model(
-    repository:  Repository,
+    repository: Repository,
     model: Model,
     config: Dict[str, Any],
     scorer: Callable[[str, str], int] = fuzz.partial_ratio,
@@ -138,7 +136,6 @@ def evaluate_model(
 ) -> ModelEvaluation:
 
     validation_dataframe = repository.get_validation_data()
-
 
     start = time()
     output = model.inference(config, validation_dataframe)
@@ -167,6 +164,7 @@ def evaluate_model(
         fp=global_stats.count("FP"),
         fn=global_stats.count("FN"),
     )
+
 
 def evaluate_kaggle_private(
     model: Model,

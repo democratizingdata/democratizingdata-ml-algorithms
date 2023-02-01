@@ -1,7 +1,7 @@
 # added by Ryan
 data/kaggle/
 mlruns/
-
+data/snippets/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

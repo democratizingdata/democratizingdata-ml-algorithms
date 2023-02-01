@@ -99,6 +99,7 @@ import src.evaluate.model as em
 
 logger = logging.getLogger("kaggle_model3")
 
+
 def validate_config(config: Dict[str, Any]) -> None:
 
     expected_keys = [
@@ -113,7 +114,11 @@ def validate_config(config: Dict[str, Any]) -> None:
         assert key in config, f"Missing key {key} in config"
 
 
-def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[bm.SupportsLogging]=None) -> None:
+def train(
+    repository: Repository,
+    config: Dict[str, Any],
+    training_logger: Optional[bm.SupportsLogging] = None,
+) -> None:
     """Trains the model and saves the results to config.model_path
 
     Args:
@@ -150,6 +155,7 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
     logger.info(f"Saving evaluation to {config['eval_path']}")
     with open(config["eval_path"], "w") as f:
         json.dump(model_evaluation.to_json(), f)
+
 
 class KaggleModel3(bm.Model):
     """This class is based on the Kaggle model 3 notebook.
@@ -318,9 +324,7 @@ class KaggleModel3(bm.Model):
         with open(config["model_path"], "w") as f:
             f.write("\n".join(datasets))
 
-    def inference(
-        self, config: Dict[str, Any], df: pd.DataFrame
-    ) -> pd.DataFrame:
+    def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         """Inference method for the KaggleModel3
 
         Args:
@@ -343,9 +347,7 @@ class KaggleModel3(bm.Model):
                 for ds in datasets:
                     if (ds in sent) and (ds not in predictions):
                         predictions.append(ds)
-                        predictions.extend(
-                            KaggleModel3.get_parenthesis(sent, ds)
-                        )
+                        predictions.extend(KaggleModel3.get_parenthesis(sent, ds))
             return "|".join(predictions)
 
         df["model_prediction"] = df["text"].apply(infer_sample)
@@ -865,7 +867,3 @@ if __name__ == "__main__":
 
 #     logging.basicConfig(level=logging.INFO)
 #     KaggleModel3().train(KaggleRepository(), config)
-
-
-
-

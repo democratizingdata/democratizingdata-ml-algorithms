@@ -11,9 +11,12 @@ import click
 from src.data.kaggle_repository import KaggleRepository
 
 VALID_REPOS = ["kaggle", "entity"]
-REPO_HELP_TEXT = f"REPO indicates repository to use, valid options are: {','.join(VALID_REPOS)}"
+REPO_HELP_TEXT = (
+    f"REPO indicates repository to use, valid options are: {','.join(VALID_REPOS)}"
+)
 CONFIG_HELP_TEXT = "--config indicates the json config file to use. If not specified, an empty dictionary will be passed."
 NOT_IMPLEMENTED = "You need to implement a function called {0}. It should have the signature: `{0}(repository: Repository, config: Dict[str, Any]) -> None:`"
+
 
 class SupportsLogging(Protocol):
     def log_metric(self, key: str, value: float) -> None:
@@ -31,20 +34,31 @@ class SupportsLogging(Protocol):
     def get_key(self) -> str:
         ...
 
+
 class Model(Protocol):
-    def train(self, repository: Repository, config: Dict[str, Any], exp_logger:SupportsLogging) -> None:
+    def train(
+        self,
+        repository: Repository,
+        config: Dict[str, Any],
+        exp_logger: SupportsLogging,
+    ) -> None:
         ...
 
-    def inference(
-        self, config: Dict[str, Any], df: pd.DataFrame
-    ) -> pd.DataFrame:
+    def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         ...
 
-def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[SupportsLogging]=None) -> None:
+
+def train(
+    repository: Repository,
+    config: Dict[str, Any],
+    training_logger: Optional[SupportsLogging] = None,
+) -> None:
     raise NotImplementedError(NOT_IMPLEMENTED.format("train"))
+
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
     raise NotImplementedError(NOT_IMPLEMENTED.format("validate"))
+
 
 def resolve_repo(repo_name: str) -> Repository:
     if repo_name == "kaggle":
@@ -52,13 +66,18 @@ def resolve_repo(repo_name: str) -> Repository:
     elif repo_name == "entity":
         return EntityRepository()
     else:
-        raise ValueError(f"Unknown repository: {repo_name}. Valid options are: {','.join(VALID_REPOS)}")
+        raise ValueError(
+            f"Unknown repository: {repo_name}. Valid options are: {','.join(VALID_REPOS)}"
+        )
 
 
-def resolve_training_logger(comet_workspace:str, comet_project:str) -> SupportsLogging:
+def resolve_training_logger(
+    comet_workspace: str, comet_project: str
+) -> SupportsLogging:
 
     if comet_project:
         from comet_ml import Experiment
+
         # if you are issues with authenticating, you need to set the the comet
         # api key as an environment variable.
         # export COMET_API_KEY=your_api_key
@@ -75,7 +94,6 @@ def resolve_training_logger(comet_workspace:str, comet_project:str) -> SupportsL
         return None
 
 
-
 def main() -> None:
     @click.group()
     def cli() -> None:
@@ -84,9 +102,13 @@ def main() -> None:
     @cli.command(name="train", help=REPO_HELP_TEXT)
     @click.argument("repo", default="kaggle")
     @click.option("--config", default="", help=CONFIG_HELP_TEXT)
-    @click.option("--comet_workspace", default="democratizingdata", help="Comet workspace name")
+    @click.option(
+        "--comet_workspace", default="democratizingdata", help="Comet workspace name"
+    )
     @click.option("--comet_project", default="", help="Comet project name")
-    def _train(repo: str, config: Dict[str, Any], comet_workspace:str, comet_project:str) -> None:
+    def _train(
+        repo: str, config: Dict[str, Any], comet_workspace: str, comet_project: str
+    ) -> None:
         repository = resolve_repo(repo)
         training_logger = resolve_training_logger(comet_workspace, comet_project)
         with open(config) as f:

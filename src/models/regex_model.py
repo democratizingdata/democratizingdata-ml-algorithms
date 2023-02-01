@@ -29,8 +29,13 @@ def validate_config(config: Dict[str, Any]) -> None:
         assert key in config, f"Missing key {key} in config"
 
 
-def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[SupportsLogging]=None) -> None:
+def train(
+    repository: Repository,
+    config: Dict[str, Any],
+    training_logger: Optional[SupportsLogging] = None,
+) -> None:
     pass
+
 
 def validate(repository: Repository, config: Dict[str, Any] = dict()) -> None:
     model = RegexModel(config)
@@ -59,20 +64,28 @@ CONNECTING_PATTERN = r"|".join(list(c + r"\ " for c in CONNECTING_WORDS))
 CAPITALIZED_WORD = r"[A-Z][a-z]{2,}"
 ACRONYM = r"[A-Z]{3,}"
 APOSTROPHE_S = "'s"
-OPTIONAL = lambda s : "(" + s + ")?"
+OPTIONAL = lambda s: "(" + s + ")?"
 OR = "|"
 SPACE = r"\ "
 
 # link to regex101: https://regex101.com/r/c903yg/1
-ENTITY_PATTERN = "".join([
-    # start of main capturing group
-    "(",
+ENTITY_PATTERN = "".join(
+    [
+        # start of main capturing group
+        "(",
         # First part must be one of the following:
         # - start with a capital letter and be followed by at least 2 lower case letters
         # - at least 3 captial letters
         # optionally an apostrophe and an s
         # ends with a space
-        "(((" + CAPITALIZED_WORD + OR + ACRONYM + ")" + OPTIONAL(APOSTROPHE_S) + ")" + r"\ )",
+        "((("
+        + CAPITALIZED_WORD
+        + OR
+        + ACRONYM
+        + ")"
+        + OPTIONAL(APOSTROPHE_S)
+        + ")"
+        + r"\ )",
         # Second part must be one of the following:
         # - a capital letter followed by at least 2 lower case letters
         # - one of the CONNECTING_WORDS followed by a space
@@ -80,25 +93,39 @@ ENTITY_PATTERN = "".join([
         # optionally end with an apostrophe and an s
         # followed by an optional space
         # this patten can repeat 2 or more times
-        "((" + CAPITALIZED_WORD + OR + ACRONYM + OR + CONNECTING_PATTERN + ")" + OPTIONAL(APOSTROPHE_S) + OPTIONAL(SPACE) + r"){2,}",
+        "(("
+        + CAPITALIZED_WORD
+        + OR
+        + ACRONYM
+        + OR
+        + CONNECTING_PATTERN
+        + ")"
+        + OPTIONAL(APOSTROPHE_S)
+        + OPTIONAL(SPACE)
+        + r"){2,}",
         # Third part is a logical lookbehind that exlcudes the last match from
         # the second part from being one of the CONNECTING_WORDS
         r"(?<!" + CONNECTING_PATTERN + ")",
         # Fourth part is an optional pattern that captures an opening and closing
         # parenthesis with at least 3 captial letters in between
         r"(\([A-Z]{3,}\))?",
-    # end of main capturing group
-    ")",
-])
+        # end of main capturing group
+        ")",
+    ]
+)
+
 
 class RegexModel(Model):
-
-    def __init__(self, config:Dict[str, str]) -> None:
-        regex_pattern = config["regex_pattern"] if "regex_pattern" in config else ENTITY_PATTERN
+    def __init__(self, config: Dict[str, str]) -> None:
+        regex_pattern = (
+            config["regex_pattern"] if "regex_pattern" in config else ENTITY_PATTERN
+        )
         keywords = config["keywords"] if "keywords" in config else []
 
         if keywords:
-            keyword_pattern = r"|".join(list(map(RegexModel.regexify_keyword, keywords)))
+            keyword_pattern = r"|".join(
+                list(map(RegexModel.regexify_keyword, keywords))
+            )
 
             regex_pattern = "" if regex_pattern == "" else regex_pattern[:-1] + "|"
             keyword_pattern = "(" + keyword_pattern + ")"
@@ -110,25 +137,25 @@ class RegexModel(Model):
 
         self.entity_pattern = re.compile(regex_pattern)
 
-
-    def train(self, repository: Repository, config: Dict[str, Any], exp_logger:SupportsLogging) -> None:
+    def train(
+        self,
+        repository: Repository,
+        config: Dict[str, Any],
+        exp_logger: SupportsLogging,
+    ) -> None:
         pass
 
-    def inference(
-        self, config: Dict[str, Any], df: pd.DataFrame
-    ) -> pd.DataFrame:
-
+    def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         def infer_f(text: str) -> str:
             # extract_f = lambda m: m[0] if len(m) > 0 else ""
             # matches = set(match[0] for match in self.entity_pattern.findall(text))
 
-            matches = set(map(
-                lambda m: m[0],
-                filter(
-                    lambda m: len(m) > 0,
-                    self.entity_pattern.findall(text)
-                ),
-            ))
+            matches = set(
+                map(
+                    lambda m: m[0],
+                    filter(lambda m: len(m) > 0, self.entity_pattern.findall(text)),
+                )
+            )
 
             matches_with_parens = list(filter(lambda m: "(" in m and ")" in m, matches))
 
@@ -136,6 +163,7 @@ class RegexModel(Model):
             def split_parens(m: str) -> str:
                 long_form, short_form = m.split("(")
                 return long_form.strip() + "|" + short_form[:-1]
+
             split_matches_parens = list(map(split_parens, matches_with_parens))
 
             return "|".join(list(matches) + split_matches_parens)
@@ -147,21 +175,20 @@ class RegexModel(Model):
 
         return df
 
-
     @staticmethod
-    def regexify_char(c:str) -> str:
+    def regexify_char(c: str) -> str:
         if c.isalpha():
             return f"[{c.upper()}|{c.lower()}]"
         else:
             return c
 
-    def regexify_first_char(c:str) -> str:
+    def regexify_first_char(c: str) -> str:
         if len(c) == 1:
             return RegexModel.regexify_char(c)
         else:
             return RegexModel.regexify_char(c[0]) + c[1:]
 
-    def regexify_keyword(keyword:str) -> str:
+    def regexify_keyword(keyword: str) -> str:
         tokens = keyword.strip().split()
 
         sub_parens = lambda s: s.replace("(", r"\(").replace(")", r"\)")
@@ -174,4 +201,6 @@ class RegexModel(Model):
             else:
                 return sub_parens("".join(list(map(RegexModel.regexify_char, keyword))))
         else:
-            return sub_parens(" ".join(list(map(RegexModel.regexify_first_char, tokens))))
+            return sub_parens(
+                " ".join(list(map(RegexModel.regexify_first_char, tokens)))
+            )

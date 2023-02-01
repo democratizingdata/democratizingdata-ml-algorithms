@@ -51,8 +51,11 @@ def validate_config(config: Dict[str, Any]) -> None:
         assert key in config, f"Missing key {key} in config"
 
 
-
-def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[bm.SupportsLogging]=None) -> None:
+def train(
+    repository: Repository,
+    config: Dict[str, Any],
+    training_logger: Optional[bm.SupportsLogging] = None,
+) -> None:
     """Trains the model and saves the results to config['model_path']
 
     Args:
@@ -112,14 +115,20 @@ class KaggleModel2(bm.Model):
         opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
 
         # get all samples
-        train_samples = repository.get_training_data(config.get("balance_labels", False))
+        train_samples = repository.get_training_data(
+            config.get("balance_labels", False)
+        )
         test_samples = repository.get_test_data()
 
         config["step"] = 0
         for epoch in trange(config["num_epochs"]):
-            config["step"]  = self._train_epoch(config, model, tokenizer, train_samples, opt, training_logger, epoch)
+            config["step"] = self._train_epoch(
+                config, model, tokenizer, train_samples, opt, training_logger, epoch
+            )
 
-            self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
+            self._test_epoch(
+                config, model, tokenizer, test_samples, training_logger, epoch
+            )
             if config["save_model"]:
                 model.save_pretrained(
                     os.path.join(
@@ -128,7 +137,9 @@ class KaggleModel2(bm.Model):
                     )
                 )
 
-    def _train_epoch(self, config, model, tokenizer, samples, opt, training_logger, curr_epoch) -> None:
+    def _train_epoch(
+        self, config, model, tokenizer, samples, opt, training_logger, curr_epoch
+    ) -> None:
         all_strings, all_labels = samples["entity"].values, samples["label"].values
         train_indices = list(range(len(all_labels)))
         shuffle(train_indices)
@@ -189,13 +200,11 @@ class KaggleModel2(bm.Model):
                             step=config["step"],
                         )
                         y_pred = softmax(
-                            model_outputs["logits"].detach().cpu().numpy(),
-                            axis=1
+                            model_outputs["logits"].detach().cpu().numpy(), axis=1
                         )
                         y_true = batch_labels.detach().cpu().numpy()
 
-
-                        matches = (np.argmax(y_pred, axis=1) == y_true)
+                        matches = np.argmax(y_pred, axis=1) == y_true
                         training_logger.log_metric(
                             "positive_accuracy",
                             matches[y_true].mean(),
@@ -207,7 +216,6 @@ class KaggleModel2(bm.Model):
                             matches[~y_true].mean(),
                             step=config["step"],
                         )
-
 
                 if torch.cuda.is_available():
                     running_total_loss += loss.detach().cpu().numpy()
@@ -222,14 +230,15 @@ class KaggleModel2(bm.Model):
 
         return config["step"]
 
-    def _test_epoch(self, config, model, tokenizer, samples, training_logger, curr_epoch) -> None:
+    def _test_epoch(
+        self, config, model, tokenizer, samples, training_logger, curr_epoch
+    ) -> None:
         test_strings, test_labels = samples["entity"].values, samples["label"].values
 
         model.eval()
         iter = 0
         running_total_loss = 0
         test_preds = []
-
 
         with trange(
             0,
@@ -267,10 +276,7 @@ class KaggleModel2(bm.Model):
                 loss = loss / config["accum_for"]  # Normalize if we're doing GA
 
                 test_preds.append(
-                        softmax(
-                            model_outputs["logits"].detach().cpu().numpy(),
-                            axis=1
-                    )
+                    softmax(model_outputs["logits"].detach().cpu().numpy(), axis=1)
                 )
 
                 if torch.cuda.is_available():
@@ -303,13 +309,13 @@ class KaggleModel2(bm.Model):
                 step=config["step"],
             )
 
-
-
             training_logger.log_confusion_matrix(
                 y_true=test_labels,
                 y_predicted=test_preds_labels,
-                labels=['negative', 'positive'],
-                index_to_example_function = lambda idx: test_strings[idx] + " " + str(test_preds[idx, test_preds_labels[idx]]),
+                labels=["negative", "positive"],
+                index_to_example_function=lambda idx: test_strings[idx]
+                + " "
+                + str(test_preds[idx, test_preds_labels[idx]]),
                 step=config["step"],
                 title="Test Set Confusion Matrix",
             )

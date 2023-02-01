@@ -12,6 +12,7 @@ from src.data.repository import Repository
 
 logger = logging.getLogger("kaggle_repository")
 
+
 class KaggleRepository(Repository):
     """A repository for the kaggle data set."""
 
@@ -21,7 +22,9 @@ class KaggleRepository(Repository):
             self.local, "../../data/kaggle/train.csv"
         )
         self.train_files_location = os.path.join(self.local, "../../data/kaggle/train")
-        self.validation_files_location = os.path.join(self.local, "../../data/kaggle/validation")
+        self.validation_files_location = os.path.join(
+            self.local, "../../data/kaggle/validation"
+        )
         self.train_dataframe_location = os.path.join(
             self.local, "../../data/kaggle/train_dataframe.csv"
         )
@@ -45,7 +48,7 @@ class KaggleRepository(Repository):
             logger.info("Building train/test dataframes")
             self.build()
 
-    def get_sample_text(self, parent_dir:str, id: str) -> Dict[str, str]:
+    def get_sample_text(self, parent_dir: str, id: str) -> Dict[str, str]:
         with open(os.path.join(parent_dir, (id + ".json"))) as fp:
             data = json.load(fp)
         return data
@@ -54,19 +57,23 @@ class KaggleRepository(Repository):
         all_text = " ".join([x["text"].replace("\n", " ").strip() for x in text])
         return unidecode(all_text)
 
-    def retrieve_text(self, parent_dir:str, row: pd.DataFrame) -> str:
+    def retrieve_text(self, parent_dir: str, row: pd.DataFrame) -> str:
         doc_id = str(row["id"])
         json_text = self.get_sample_text(parent_dir, doc_id)
         return self.process_text(json_text)
 
-    def get_training_data(self, batch_size: Optional[int] = None, balance_labels: Optional[bool] = False) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+    def get_training_data(
+        self, batch_size: Optional[int] = None, balance_labels: Optional[bool] = False
+    ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         if balance_labels:
             raise ValueError("Label balancing not supported for kaggle data")
-        
+
         fetch_f = partial(self.retrieve_text, self.train_files_location)
 
         def iter_f():
-            for batch in pd.read_csv(self.train_dataframe_location, chunksize=batch_size):
+            for batch in pd.read_csv(
+                self.train_dataframe_location, chunksize=batch_size
+            ):
                 batch["text"] = batch.apply(fetch_f, axis=1)
                 yield batch
 
@@ -77,11 +84,15 @@ class KaggleRepository(Repository):
             df["text"] = df.apply(fetch_f, axis=1)
             return df
 
-    def get_test_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+    def get_test_data(
+        self, batch_size: Optional[int] = None
+    ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         fetch_f = partial(self.retrieve_text, self.train_files_location)
 
         def iter_f():
-            for batch in pd.read_csv(self.test_dataframe_location, chunksize=batch_size):
+            for batch in pd.read_csv(
+                self.test_dataframe_location, chunksize=batch_size
+            ):
                 batch["text"] = batch.apply(fetch_f, axis=1)
                 yield batch
 
@@ -92,12 +103,18 @@ class KaggleRepository(Repository):
             df["text"] = df.apply(fetch_f, axis=1)
             return df
 
-    def get_validation_data(self, batch_size: Optional[int] = None) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+    def get_validation_data(
+        self, batch_size: Optional[int] = None
+    ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         fetch_f = partial(self.retrieve_text, self.validation_files_location)
 
         def iter_f():
-            for batch in pd.read_csv(self.validation_dataframe_location, chunksize=batch_size):
-                batch = batch.loc[:, ["Id", "PredictionString"]].rename(columns={"Id": "id", "PredictionString": "label"})
+            for batch in pd.read_csv(
+                self.validation_dataframe_location, chunksize=batch_size
+            ):
+                batch = batch.loc[:, ["Id", "PredictionString"]].rename(
+                    columns={"Id": "id", "PredictionString": "label"}
+                )
                 batch["text"] = batch.apply(fetch_f, axis=1)
                 yield batch
 
@@ -105,7 +122,9 @@ class KaggleRepository(Repository):
             return iter_f()
         else:
             df = pd.read_csv(self.validation_dataframe_location)
-            df = df.loc[:, ["Id", "PredictionString"]].rename(columns={"Id": "id", "PredictionString": "label"})
+            df = df.loc[:, ["Id", "PredictionString"]].rename(
+                columns={"Id": "id", "PredictionString": "label"}
+            )
             df["text"] = df.apply(fetch_f, axis=1)
             return df
 
@@ -114,7 +133,9 @@ class KaggleRepository(Repository):
         raw = pd.read_csv(self.train_labels_location)
 
         def aggregate_clean_label(row: pd.DataFrame):
-            labels = list(map(lambda x: x.lower().strip(), row["dataset_label"].unique()))
+            labels = list(
+                map(lambda x: x.lower().strip(), row["dataset_label"].unique())
+            )
             return "|".join(labels)
 
         unique_labels = raw.groupby("Id").apply(aggregate_clean_label)
@@ -128,7 +149,6 @@ class KaggleRepository(Repository):
         train_df.to_csv(self.train_dataframe_location, index=False)
         logger.info("Saving test data to: ", self.test_dataframe_location)
         test_df.to_csv(self.test_dataframe_location, index=False)
-
 
     def __repr__(self) -> str:
         return "kaggle_repository"

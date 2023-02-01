@@ -12,17 +12,20 @@ from src.models.regex_model import RegexModel
 
 logger = logging.getLogger("RegexModel")
 
+
 def validate_config(config: Dict[str, Any]) -> None:
 
-    expected_keys = [
-        "eval_path",
-        "keywords"
-    ]
+    expected_keys = ["eval_path", "keywords"]
 
     for key in expected_keys:
         assert key in config, f"Missing key {key} in config"
 
-def train(repository: Repository, config: Dict[str, Any], training_logger: Optional[SupportsLogging]=None) -> None:
+
+def train(
+    repository: Repository,
+    config: Dict[str, Any],
+    training_logger: Optional[SupportsLogging] = None,
+) -> None:
     pass
 
 
@@ -41,13 +44,9 @@ def validate(repository: Repository, config: Dict[str, Any] = dict()) -> None:
 
 
 class Kaggle3RegexInference(RegexModel):
-
     def __init__(self, config: Dict[str, Any]):
         with open(config["model_path"], "r") as f:
             config["keywords"] = [l.strip() for l in f.readlines()]
 
         config["regex_pattern"] = ""
         super().__init__(config)
-
-
-
