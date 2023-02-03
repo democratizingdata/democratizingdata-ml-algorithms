@@ -18,6 +18,7 @@ import spacy
 from imblearn.over_sampling import RandomOverSampler
 from pandarallel import pandarallel
 from sklearn.model_selection import train_test_split
+from spacy import displacy
 from spacy.tokens import Doc
 from tqdm import tqdm
 
@@ -241,6 +242,70 @@ def snippet_to_ner_sample(path:str, row:pd.DataFrame) -> pd.DataFrame:
         "ner_tags": [ner_tags.split()]
     })
 
+
+def extract_entities(text:List[str], ner_tags:List[str]) -> List[Dict[str, Union[int,str]]]:
+    """Extracts entities from a list of tokens and their corresponding NER tags.
+    Args:
+        text (List[str]): The list of tokens.
+        ner_tags (List[str]): The list of NER tags.
+        Returns:
+            List[Dict[str, Any]]: A list of entities, each entity is a dictionary
+                                  with the following keys:
+                                    - start: The start index of the entity.
+                                    - end: The end index of the entity.
+                                    - label: The label of the entity.
+    """
+    entities = []
+    start = 0
+    end = 0
+    in_ent = False
+    for token, tag in zip(text, ner_tags):
+        token_length = len(token) + 1 # plus a space
+        if tag == "I-DAT":
+            in_ent = True
+            end += token_length
+        elif tag == "O" and in_ent:
+            entities.append({
+                "start": start,
+                "end": end,
+                "label": "Dataset"
+            })
+            in_ent = False
+            start = end
+        elif tag == "B-DAT":
+            entities.append({
+                "start": start,
+                "end": end,
+                "label": "Dataset"
+            })
+            start = end
+            end += token_length
+        else:
+            # just an O tag
+            start += token_length
+            end = start
+
+    return entities
+
+def visualize_ner_tags(
+    text: str, ner_tags: List[str]
+) -> Tuple[str, str, str]:
+    """Visualize NER tags in a text."""
+    entities = extract_entities(text, ner_tags)
+
+    ex = [{
+        "text": " ".join(text),
+        "ents": entities,
+        "title": None
+    }]
+
+    displacy.render(
+        ex,
+        style="ent",
+        manual=True,
+        colors={"Dataset": "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}
+    )
+
 class SnippetRepositoryMode(Enum):
     NER = "ner"
     CLASSIFICATION = "classification"
@@ -322,9 +387,9 @@ class SnippetRepository(Repository):
         return df
 
     def get_iter_or_df(
-        self, 
-        path:str, 
-        transform_f:Callable[[pd.DataFrame], pd.DataFrame] = lambda x: x, 
+        self,
+        path:str,
+        transform_f:Callable[[pd.DataFrame], pd.DataFrame] = lambda x: x,
         batch_size: Optional[int] = None,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         def iter_f():
