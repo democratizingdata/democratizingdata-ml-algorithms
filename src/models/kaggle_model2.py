@@ -27,6 +27,7 @@ from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTok
 from src.data.repository import Repository
 import src.models.base_model as bm
 import src.evaluate.model as em
+import src.models.schwartz_hearst_model as shm
 
 logger = logging.getLogger("KaggleModel2")
 
@@ -96,6 +97,33 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
 
 
 class KaggleModel2(bm.Model):
+
+    def inference(self, config: Dict[str, Any], df:pd.DataFrame) -> pd.DataFrame:
+
+        # use their implementation of schwartz hearst to get the candidate
+        # entities. The entities are storec in the column "entities"
+        extractor = shm.SchwartzHearstModel()
+        df = extractor.inference_dataframe(config, df).rename(columns={"model_prediction": "entities"})
+
+
+        # Load the model
+        
+        
+        def infer_sample(text: str) -> str:
+            predictions = []
+            for sent in re.split("[\.]", text):
+                for ds in datasets:
+                    if (ds in sent) and (ds not in predictions):
+                        predictions.append(ds)
+                        predictions.extend(KaggleModel3.get_parenthesis(sent, ds))
+            return "|".join(predictions)
+
+        
+        df["model_prediction"] = df["text"].apply(infer_sample)
+
+        return df
+
+
     def train(self, repository: Repository, config: Dict[str, Any], training_logger: bm.SupportsLogging) -> None:  # type: ignore[override]
         pretrained_config = AutoConfig.from_pretrained(
             config["pretrained_model"], num_labels=2
