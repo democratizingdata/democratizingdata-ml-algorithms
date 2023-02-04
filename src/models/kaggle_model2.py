@@ -10,6 +10,7 @@
 import json
 import logging
 import os
+from itertools import islice
 from random import shuffle
 from typing import Any, Dict, Optional
 
@@ -96,30 +97,73 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
         json.dump(model_evaluation.to_json(), f)
 
 
+# https://stackoverflow.com/a/62913856/2691018
+def batcher(iterable, batch_size):
+    iterator = iter(iterable)
+    while batch := list(islice(iterator, batch_size)):
+        yield batch
+
+
+
 class KaggleModel2(bm.Model):
 
     def inference(self, config: Dict[str, Any], df:pd.DataFrame) -> pd.DataFrame:
 
-        # use their implementation of schwartz hearst to get the candidate
-        # entities. The entities are storec in the column "entities"
-        extractor = shm.SchwartzHearstModel()
-        df = extractor.inference_dataframe(config, df).rename(columns={"model_prediction": "entities"})
-
+        df = config["extractor"].inference(config["extractor_config"], df).rename(columns={"model_prediction": "entities"})
 
         # Load the model
-        
-        
-        def infer_sample(text: str) -> str:
-            predictions = []
-            for sent in re.split("[\.]", text):
-                for ds in datasets:
-                    if (ds in sent) and (ds not in predictions):
-                        predictions.append(ds)
-                        predictions.extend(KaggleModel3.get_parenthesis(sent, ds))
-            return "|".join(predictions)
+        pretrained_config = AutoConfig.from_pretrained(
+            config["pretrained_model"], num_labels=2
+        )
 
-        
-        df["model_prediction"] = df["text"].apply(infer_sample)
+        # if torch.cuda.is_available():
+        #     model = AutoModelForSequenceClassification.from_pretrained(
+        #         config["pretrained_model"], config=pretrained_config
+        #     ).cuda()
+        # else:
+        #     model = AutoModelForSequenceClassification.from_pretrained(
+        #         config["pretrained_model"], config=pretrained_config
+        #     )
+
+        model = AutoModelForSequenceClassification.from_pretrained(
+            config["pretrained_model"], config=pretrained_config
+        )
+
+        tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
+        model.eval()
+
+        def infer_sample(text: str) -> str:
+            entities = text.split("|")
+
+            filtered_entities = []
+            for batch in batcher(entities, config["batch_size"]):
+
+                batch_features = tokenizer(
+                    batch,
+                    truncation=True,
+                    max_length=64,
+                    padding="max_length",
+                    add_special_tokens=True,
+                    return_tensors="pt",
+                )
+                model_outputs = model(
+                    **batch_features, return_dict=True
+                )
+                classifications = torch.softmax(model_outputs.logits, -1).detach().cpu().numpy()
+
+                filtered_entities.extend(list(map(
+                    lambda ent_cls: ent_cls[0],
+                    filter(
+                        lambda ent_cls: ent_cls[1][1] > config["min_prob"],
+                        zip(batch, classifications)
+                    )
+                )))
+            return "|".join(filtered_entities)
+
+
+
+
+        df["model_prediction"] = df["entities"].apply(infer_sample)
 
         return df
 
@@ -158,12 +202,12 @@ class KaggleModel2(bm.Model):
                 config, model, tokenizer, test_samples, training_logger, epoch
             )
             if config["save_model"]:
-                model.save_pretrained(
-                    os.path.join(
-                        config["model_path"],
-                        training_logger.get_key(),
-                    )
+                save_path = os.path.join(
+                    config["model_path"],
+                    training_logger.get_key(),
                 )
+                model.save_pretrained(save_path)
+                tokenizer.save_pretrained(save_path)
 
     def _train_epoch(
         self, config, model, tokenizer, samples, opt, training_logger, curr_epoch

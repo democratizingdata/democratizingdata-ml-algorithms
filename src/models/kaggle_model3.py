@@ -343,7 +343,7 @@ class KaggleModel3(bm.Model):
 
         def infer_sample(text: str) -> str:
             predictions = []
-            for sent in re.split("[\.]", text):
+            for sent in re.split(r"[\.]", text):
                 for ds in datasets:
                     if (ds in sent) and (ds not in predictions):
                         predictions.append(ds)
@@ -655,9 +655,9 @@ class MapFilter_TrainCounts(MapFilter):
             stats[ds] = [
                 count,
                 tr_counts[ds],
-                tr_counts[re.sub("[\s]?\(.*\)", "", ds)],
+                tr_counts[re.sub(r"[\s]?\(.*\)", "", ds)],
                 data_counts[ds],
-                data_counts[re.sub("[\s]?\(.*\)", "", ds)],
+                data_counts[re.sub(r"[\s]?\(.*\)", "", ds)],
             ]
 
         def filter_f(ds):
@@ -672,7 +672,7 @@ class MapFilter_TrainCounts(MapFilter):
     def extend_paranthesis(datasets: List[str]) -> List[str]:
         # Return each instance of dataset from datasets +
         # the same instance without parenthesis (if there are some)
-        pat = re.compile("\(.*\)")
+        pat = re.compile(r"\(.*\)")
         extended_datasets = []
         for ds in datasets:
             ds_no_parenth = pat.sub("", ds).strip()

@@ -22,12 +22,11 @@ class SchwartzHearstModel(Model):
     def inference_string(self, config: Dict[str, Any], text: str) -> str:
         raise NotImplementedError()
 
-    def inference_dataframe(
+    def inference(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
         def infer_sample(text: List[Dict[str, str]]) -> str:
-            all_text = " ".join([s["text"].replace("\n", " ").strip() for s in text])
-            extractions = extract_abbreviation_definition_pairs(doc_text=all_text)
+            extractions = extract_abbreviation_definition_pairs(doc_text=text)
 
             return "|".join(chain.from_iterable(extractions.items()))
 
