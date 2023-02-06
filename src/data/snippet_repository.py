@@ -243,7 +243,7 @@ def snippet_to_ner_sample(path:str, row:pd.DataFrame) -> pd.DataFrame:
     })
 
 
-def extract_entities(text:List[str], ner_tags:List[str]) -> List[Dict[str, Union[int,str]]]:
+def extract_entities_for_visualization(text:List[str], ner_tags:List[str]) -> List[Dict[str, Union[int,str]]]:
     """Extracts entities from a list of tokens and their corresponding NER tags.
     Args:
         text (List[str]): The list of tokens.
@@ -291,7 +291,7 @@ def visualize_ner_tags(
     text: str, ner_tags: List[str]
 ) -> Tuple[str, str, str]:
     """Visualize NER tags in a text."""
-    entities = extract_entities(text, ner_tags)
+    entities = extract_entities_for_visualization(text, ner_tags)
 
     ex = [{
         "text": " ".join(text),
@@ -303,7 +303,7 @@ def visualize_ner_tags(
         ex,
         style="ent",
         manual=True,
-        colors={"Dataset": "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}
+        options={"colors":{"Dataset": "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}}
     )
 
 class SnippetRepositoryMode(Enum):
