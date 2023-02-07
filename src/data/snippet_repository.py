@@ -96,8 +96,8 @@ def tag_sentence(
                 # print(f"Could not find {str(match)} in sentence: ",  sentence.text)
                 continue
 
-            first_tag = ner_tags[start_idx]
-            prev_tag = ner_tags[start_idx - 1] if start_idx > 0 else "O"
+            # first_tag = ner_tags[start_idx]
+            # prev_tag = ner_tags[start_idx - 1] if start_idx > 0 else "O"
             # If there are any tokens that are already marked then this match
             # could be a subset of another match
             if not any(
@@ -106,10 +106,11 @@ def tag_sentence(
                     ner_tags[start_idx : start_idx + len(label_tokens)],
                 )
             ):
-                if prev_tag == "O":
-                    ner_tags[start_idx] = "I-DAT"
-                else:
-                    ner_tags[start_idx] = "B-DAT"
+                # if prev_tag == "O":
+                #     ner_tags[start_idx] = "I-DAT"
+                # else:
+                #     ner_tags[start_idx] = "B-DAT"
+                ner_tags[start_idx] = "B-DAT"
 
                 for idx in idxs[1:]:
                     ner_tags[idx] = "I-DAT"
@@ -442,7 +443,7 @@ class SnippetRepository(Repository):
         process_n = build_options.get("process_n", 100)
 
         print("Loading Kaggle training labels...")
-        all_kaggle_train = pd.read_csv(self.train_labels_location)#.iloc[:300, :]
+        all_kaggle_train = pd.read_csv(self.train_labels_location)#.iloc[:500, :]
         split_training_data = np.array_split(
             all_kaggle_train, len(all_kaggle_train) // process_n
         )
@@ -606,15 +607,16 @@ class SnippetRepository(Repository):
             train_samples, test_size=0.2, random_state=42
         )
 
-        train_df.to_csv(self.train_dataframe)
-        test_df.to_csv(self.test_dataframe)
+        train_df.to_csv(self.train_dataframe, index=False)
+        test_df.to_csv(self.test_dataframe, index=False)
 
-        validation_samples.to_csv(self.validation_dataframe)
+        validation_samples.to_csv(self.validation_dataframe, index=False)
 
         ros = RandomOverSampler(random_state=42, sampling_strategy=1)
         train_df, train_df["snippet_label"] = ros.fit_resample(
             train_df.drop(columns=["snippet_label"]), train_df["snippet_label"].astype(int)
         )
+        train_df = train_df.sample(frac=1).reset_index(drop=True)
         train_df.to_csv(self.train_balanced_dataframe, index=False)
 
 
