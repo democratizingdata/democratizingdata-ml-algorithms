@@ -18,6 +18,11 @@ CONFIG_HELP_TEXT = "--config indicates the json config file to use. If not speci
 NOT_IMPLEMENTED = "You need to implement a function called {0}. It should have the signature: `{0}(repository: Repository, config: Dict[str, Any]) -> None:`"
 
 
+class MockLRScheduler:
+    def step(self) -> None:
+        ...
+
+
 class SupportsLogging(Protocol):
     def log_metric(self, key: str, value: float) -> None:
         ...
