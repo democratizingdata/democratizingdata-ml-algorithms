@@ -1,8 +1,12 @@
 
+from functools import partial
 from itertools import islice
 import logging
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+
+import datasets as ds
+import numpy as np
 import pandas as pd
 import torch
 import transformers as tfs
@@ -12,8 +16,8 @@ from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokeni
 from src.data.repository import Repository
 import src.models.base_model as bm
 
-MODEL_OBJECTS = Tuple[tfs.modeling_utils.PreTrainedModel, tfs.tokenization_utils_base.PreTrainedTokenizer]
-MODEL_OBJECTS_WITH_OPTIMIZER = Tuple[tfs.modeling_utils.PreTrainedModel, tfs.tokenization_utils_base.PreTrainedTokenizer, torch.optim.Optimizer, torch.optim.lr_scheduler._LRScheduler]
+MODEL_OBJECTS = Tuple[tfs.modeling_utils.PreTrainedModel, tfs.tokenization_utils_base.PreTrainedTokenizer, tfs.data.data_collator.DataCollator]
+MODEL_OBJECTS_WITH_OPTIMIZER = Tuple[tfs.modeling_utils.PreTrainedModel, tfs.tokenization_utils_base.PreTrainedTokenizer, tfs.data.data_collator.DataCollator, torch.optim.Optimizer, torch.optim.lr_scheduler._LRScheduler]
 
 logger = logging.getLogger("ner_model")
 
@@ -52,19 +56,60 @@ def vaidate(repository: Repository, config: Dict[str, Any]) -> None:
 # Assigning the label -100 to the special tokens [CLS] and [SEP] so they’re ignored by the PyTorch loss function.
 # Only labeling the first token of a given word. Assign -100 to other subtokens from the same word.
 # ==============================================================================
-def prepare_batch(tokenizer: tfs.tokenization_utils_base.PreTrainedTokenizer, batch: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    pass
+def convert_ner_tags_to_ids(lbl_to_id:Dict[str, int], ner_tags: List[str]) -> List[int]:
+    return [lbl_to_id[ner_tag] for ner_tag in ner_tags]
+
+def convert_sample_ner_tages_to_ids(lbl_to_id:Dict[str, int], sample: Dict[str, Any]) -> Dict[str, Any]:
+    sample["labels"] = convert_ner_tags_to_ids(lbl_to_id, sample["labels"])
+    return sample
+
+def tokenize_and_align_labels(tokenizer_f, examples):
+    tokenized_inputs = tokenizer_f(examples["text"])
+
+    labels = []
+    for i, label in enumerate(examples["labels"]):
+        word_ids = tokenized_inputs.word_ids(batch_index=i)
+        label_ids = [-100] * len(word_ids) # assume all tokens are special
+        top_word_id = max(map(lambda x: x if x else -1, word_ids))
+        for word_idx in range(top_word_id + 1):
+            label_ids[word_ids.index(word_idx)] = label[word_idx]
+        labels.append(label_ids)
+
+    tokenized_inputs["labels"] = labels
+    return tokenized_inputs
 
 
+def prepare_batch(
+        tokenizer: tfs.tokenization_utils_base.PreTrainedTokenizer,
+        data_collator: tfs.data.data_collator.DataCollator,
+        lbl_to_id: Dict[str, int],
+        batch: pd.DataFrame
+    ) -> Dict[str, torch.Tensor]:
 
-# https://stackoverflow.com/a/62913856/2691018
-def batcher(iterable, batch_size):
-    iterator = iter(iterable)
-    while batch := list(islice(iterator, batch_size)):
-        yield batch
+    ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
+    tokenize_f = partial(
+        tokenize_and_align_labels,
+        partial(tokenizer, is_split_into_words=True, truncation=True),
+    )
 
+
+    transformed_batch = ds.from_pandas(
+         batch.drop(columns=["tags"]).rename(columns={"ner_tags": "labels"})
+    ).map(
+        ner_to_id_f,
+        batched=True
+    ).map(
+        tokenize_f,
+        batched=True,
+        remove_columns=["text"]
+    )
+
+    return data_collator(list(transformed_batch))
 
 class NERModel_pytorch(bm.Model):
+    lbl_to_id = {"O":0, "B-DAT":1, "I-DAT":2}
+    id_to_lbl = {v:k for k,v in lbl_to_id.items()}
+
 
     def get_model_objects(
         self,
@@ -75,6 +120,11 @@ class NERModel_pytorch(bm.Model):
         tokenizer = AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"],
             **config["tokenizer_kwargs"],
+        )
+
+        collator = tfs.data.data_collator.DataCollatorForTokenClassification(
+            tokenizer,
+            return_tensors="pt",
         )
 
         pretrained_config = AutoConfig.from_pretrained(
@@ -98,10 +148,10 @@ class NERModel_pytorch(bm.Model):
             else:
                 scheduler = bm.MockLRScheduler()
 
-            return model, tokenizer, optimizer, scheduler
+            return model, tokenizer, collator, optimizer, scheduler
 
         else:
-            return model, tokenizer
+            return model, tokenizer, collator
 
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
@@ -112,19 +162,28 @@ class NERModel_pytorch(bm.Model):
 
     def train(self, repository: Repository, config: Dict[str, Any], training_logger: bm.SupportsLogging) -> None:
 
-        model, tokenizer, optimizer, scheduler = self.get_model_objects(config, include_optimizer=True)
+        model, tokenizer, collator, optimizer, scheduler = self.get_model_objects(config, include_optimizer=True)
 
         train_samples = repository.get_training_data(
+            batch_size=config["batch_size"],
             balance_labels = config.get("balance_labels", False),
         )
 
         test_samples = repository.get_test_data()
 
-        step = 0
+        step = config.get("start_step", 0)
         for epoch in range(config["epochs"]):
             model.train()
-            for batch in batcher(train_samples, config["batch_size"]):
-                batch = prepare_batch(batch, tokenizer)
+            for batch in repository.get_training_data(
+                batch_size=config["batch_size"],
+                balance_labels = config.get("balance_labels", False)
+            ):
+                batch = prepare_batch(
+                    tokenizer,
+                    collator,
+                    NERModel_pytorch.lbl_to_id,
+                    batch
+                )
                 outputs = model(**batch)
                 loss = outputs.loss
                 loss.backward()
@@ -132,8 +191,45 @@ class NERModel_pytorch(bm.Model):
                 scheduler.step()
                 optimizer.zero_grad()
                 step += 1
-                training_logger.log_metrics({"loss": loss.item()}, step=step)
 
-            training_logger.log_metrics(self._evaluate(model, repository, tokenizer), step=step)
+                if step % config.get("steps_per_eval", 10) == 0:
+
+                    per_sample_loss = torch.nn.functional.cross_entropy(
+                        outputs.logits.view(-1, outputs.logits.size(-1)),
+                        outputs.labels.view(-1),
+                        reduce=False,
+                        ignore_index=-100
+                    ).view(outputs.labels.size()).mean(dim=1).numpy()
+
+                    best, worst = np.argmin(per_sample_loss), np.argmax(per_sample_loss)
+
+                    # continue here with logging
+
+                    with training_logger.train():
+                        training_logger.log_metric("loss", loss.numpy(), step=step)
+
+
+                    model.eval()
+                    total_loss, total_n = 0, 0
+                    for batch in repository.get_test_data(
+                        batch_size=config["batch_size"]
+                    ):
+                        batch = prepare_batch(
+                            tokenizer,
+                            collator,
+                            NERModel_pytorch.lbl_to_id,
+                            batch
+                        )
+                        outputs = model(**batch)
+                        loss = outputs.loss
+                        total_loss += loss.item() * len(batch["input_ids"])
+                        total_n += len(batch["input_ids"])
+
+                    with training_logger.test():
+                        training_logger.log_metric(
+                            "loss",
+                            total_loss/total_n,
+                            step=step
+                        )
 
 
