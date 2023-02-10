@@ -1,0 +1,16 @@
+name: ner_model
+
+conda_env: conda_env.linux.cpu.yaml
+
+entry_points:
+  train:
+    parameters:
+      repo: {type: string, default: "snippet-ner"}
+      config: {type: path, default: "models/ner_model/baseline/config.json"}
+      comet_project: {type: string, default: "ner-model"}
+    command: "python -m pip install -e ../../. && python ../../src/models/ner_model.py train {repo} --config {config} --comet_project {comet_project}"
+  validate:
+    parameters:
+      repo: {type: string, default: "snippet-ner"}
+      config: {type: path, default: "models/ner_model/baseline/config.json"}
+    command: "python -m pip install -e ../../. && python ../../src/models/ner_model.py validate {repo} --config {config}"

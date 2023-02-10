@@ -366,26 +366,26 @@ class SnippetRepository(Repository):
         # we need to retrieve the snippet and transform it depending on the
         # selected mode
         path = self.validation_files_location if is_validation else self.train_files_location
-        if self.mode == SnippetRepositoryMode.CLASSIFICATION:
+        if self.mode == SnippetRepositoryMode.CLASSIFICATION.value:
             # If mode is classification, we need to transform the rows to return
             # the snippet and the label
             return df.apply(
                 lambda row: snippet_to_classification_sample(path, row), axis=1
             )
-        elif self.mode == SnippetRepositoryMode.NER:
+        elif self.mode == SnippetRepositoryMode.NER.value:
             # If mode is NER, we need to transform the rows to return the snippet
             # as a token list and the label as a list of NER tags
             return df.apply(
                 lambda row: snippet_to_ner_sample(path, row), axis=1
             )
-        elif self.mode == SnippetRepositoryMode.MASKED_LM:
+        elif self.mode == SnippetRepositoryMode.MASKED_LM.value:
             # If mode is MASKED_LM, we need to transform the rows to return the
             # snippet as a token list and the label as a list of "mask" tokens
             return df.apply(
                 lambda row: snippet_to_masked_lm_sample(path, row), axis=1
             )
-
-        return df
+        else:
+            raise ValueError(f"Invalid mode {self.mode}")
 
     def get_iter_or_df(
         self,
@@ -422,7 +422,10 @@ class SnippetRepository(Repository):
     def get_test_data(
         self, batch_size: Optional[int] = None
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        return self.get_iter_or_df(self.test_dataframe, partial(self.transform_df, False), batch_size)
+        transform_f = partial(self.transform_df, False)
+        aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
+        transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
+        return self.get_iter_or_df(self.test_dataframe, transform_aggregate_f, batch_size)
 
     def get_validation_data(
         self, batch_size: Optional[int] = None

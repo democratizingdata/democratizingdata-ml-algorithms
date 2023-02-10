@@ -6,9 +6,11 @@ import pandas as pd
 from src.data.entity_repository import EntityRepository
 
 from src.data.repository import Repository
+from src.data.repository_resolver import resolve_repo
+
 
 import click
-from src.data.kaggle_repository import KaggleRepository
+
 
 VALID_REPOS = ["kaggle", "entity"]
 REPO_HELP_TEXT = (
@@ -65,17 +67,6 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
     raise NotImplementedError(NOT_IMPLEMENTED.format("validate"))
 
 
-def resolve_repo(repo_name: str) -> Repository:
-    if repo_name == "kaggle":
-        return KaggleRepository()
-    elif repo_name == "entity":
-        return EntityRepository()
-    else:
-        raise ValueError(
-            f"Unknown repository: {repo_name}. Valid options are: {','.join(VALID_REPOS)}"
-        )
-
-
 def resolve_training_logger(
     comet_workspace: str, comet_project: str
 ) -> SupportsLogging:
@@ -90,7 +81,7 @@ def resolve_training_logger(
             workspace=comet_workspace,
             project_name=comet_project,
             auto_metric_logging=False,
-            disabled=False,
+            disabled=True,
         )
 
         return experiment
