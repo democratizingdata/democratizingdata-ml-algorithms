@@ -9,6 +9,7 @@
     "save_model": true,
 
     "epochs": 5,
+    "balance_labels": true,
     "model_tokenizer_name": "distilbert-base-cased",
     "tokenizer_kwargs": {
         "do_lower_case": false

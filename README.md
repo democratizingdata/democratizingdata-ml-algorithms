@@ -55,3 +55,8 @@ the following:
 `MYPYPATH=stubs mypy src/` (fix any errors you get, ignore notes/warnings)
 
 
+## Running on SciServer
+
+Rather than having mlflow spin up a env, use:
+
+`--env-manager=local`

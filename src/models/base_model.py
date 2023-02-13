@@ -81,7 +81,7 @@ def resolve_training_logger(
             workspace=comet_workspace,
             project_name=comet_project,
             auto_metric_logging=False,
-            disabled=True,
+            disabled=False,
         )
 
         return experiment

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 import datasets as ds
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,6 +14,9 @@ import torch
 import transformers as tfs
 from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
 from tqdm import tqdm
+
+from datasets.utils.logging import disable_progress_bar
+disable_progress_bar()
 
 from src.data.repository import Repository
 import src.models.base_model as bm
@@ -111,6 +115,16 @@ def prepare_batch(
 
     return data_collator(list(transformed_batch))
 
+
+def lbl_to_color(lbl):
+    value =1 - lbl[0]
+    saturation = max(lbl[1], lbl[2]) - min(lbl[1], lbl[2])
+    BLUE = 240/360
+    RED = 360/360
+    hue = BLUE * lbl[1] + RED * lbl[2]
+    return mcolors.hsv_to_rgb([hue, saturation, value])
+
+
 # based on
 # https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
 def color_text_figure(tokens, colors_true, colors_pred):
@@ -126,7 +140,12 @@ def color_text_figure(tokens, colors_true, colors_pred):
     ax.set_axis_off()
     space = 0.025
     w = 0.0
-    for i, (token, color_true, color_pred) in enumerate(zip(tokens, colors_true, colors_pred)):
+
+    for i, (token, color_true, color_pred) in enumerate(zip(
+        tokens,
+        list(map(lbl_to_color, colors_true)),
+        list(map(lbl_to_color, colors_pred)),
+    )):
         t = ax.text(w, 0.25, token, color=color_true, ha="left", va="center", fontsize=18)
         ax.text(w, 0.75, token, color=color_pred, ha="left", va="center", fontsize=18)
         transf = ax.transData.inverted()
@@ -243,6 +262,8 @@ class NERModel_pytorch(bm.Model):
 
         model, tokenizer, collator, optimizer, scheduler = self.get_model_objects(config, include_optimizer=True)
 
+        test_samples = repository.get_test_data(batch_size=config["batch_size"])
+
         step = config.get("start_step", 0)
         for epoch in range(config["epochs"]):
             model.train()
@@ -306,9 +327,9 @@ class NERModel_pytorch(bm.Model):
 
                     model.eval()
                     total_loss, total_n = 0, 0
-                    for batch in tqdm(repository.get_test_data(
+                    for i, batch in enumerate(tqdm(repository.get_test_data(
                         batch_size=config["batch_size"]
-                    ), desc=f"Testing Epoch {epoch}"):
+                    ), desc=f"Testing Epoch {epoch}")):
                         batch = prepare_batch(
                             tokenizer,
                             collator,
@@ -320,6 +341,9 @@ class NERModel_pytorch(bm.Model):
                         loss = outputs.loss
                         total_loss += loss.item() * len(batch["input_ids"])
                         total_n += len(batch["input_ids"])
+
+                        if i == config.get("eval_n_test_batches", 10):
+                            break
 
                     per_sample_loss = torch.nn.functional.cross_entropy(
                         outputs.logits.view(-1, outputs.logits.size(-1)),
@@ -357,3 +381,40 @@ if __name__ == "__main__":
     bm.train = train
     bm.validate = validate
     bm.main()
+
+    # from src.data.repository_resolver import resolve_repo
+
+    # repository = resolve_repo("snippet-ner")
+    # config = {
+    #     "accum_for": 1,
+    #     "max_cores": 24,
+    #     "max_seq_len": 128,
+    #     "use_amp": True,
+    #     "learning_rate": 1e-5,
+    #     "model_path": "baseline",
+    #     "batch_size": 16,
+    #     "save_model": True,
+
+    #     "epochs": 5,
+    #     "model_tokenizer_name": "distilbert-base-cased",
+    #     "tokenizer_kwargs": {
+    #         "do_lower_case": False
+    #     },
+    #     "model_kwargs": {
+    #     },
+    #     "optimizer": "torch.optim.Adam",
+    #     "optimizer_kwargs": {
+    #     }
+    # }
+    # from comet_ml import Experiment
+
+    # training_logger = Experiment(
+    #     workspace="democratizingdata",
+    #     project_name="ner-model",
+    #     auto_metric_logging=False,
+    #     disabled=True,
+    # )
+
+
+    # model = NERModel_pytorch()
+    # model.train(repository, config, training_logger)
