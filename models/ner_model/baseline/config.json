@@ -3,10 +3,9 @@
     "max_cores": 24,
     "max_seq_len": 128,
     "use_amp": true,
-    "learning_rate": 1e-5,
     "model_path": "baseline",
     "batch_size": 16,
-    "save_model": true,
+    "save_model": false,
 
     "epochs": 5,
     "balance_labels": true,
@@ -18,5 +17,6 @@
     },
     "optimizer": "torch.optim.Adam",
     "optimizer_kwargs": {
+        "lr": 1e-5
     }
 }

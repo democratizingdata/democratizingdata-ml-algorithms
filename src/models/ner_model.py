@@ -235,20 +235,20 @@ class NERModel_pytorch(bm.Model):
         # print("input_ids", batch["input_ids"][idx])
         # print("mask_f(batch['input_ids'][idx])", mask_f(batch["input_ids"][idx]))
 
-        selected_tokens = tokenizer.convert_ids_to_tokens(mask_f(batch["input_ids"][idx]).numpy())
+        selected_tokens = tokenizer.convert_ids_to_tokens(mask_f(batch["input_ids"][idx]).detach().cpu().numpy())
         # print(selected_tokens)
 
-        selected_labels = mask_f(batch["labels"][idx])
+        selected_labels = mask_f(batch["labels"][idx]).detach().cpu()
         # print("before where", selected_labels.size(), selected_labels)
         selected_labels = torch.where(selected_labels==-100, torch.tensor(0), selected_labels)
         # print("after where", selected_labels.size(), selected_labels)
-        selected_labels = torch.nn.functional.one_hot(selected_labels, num_classes=3).detach().numpy()
+        selected_labels = torch.nn.functional.one_hot(selected_labels, num_classes=3).detach().cpu().numpy()
         # print("after one_hot", selected_labels.size(), selected_labels)
 
         selected_logits = outputs.logits[idx]
         # print("selected_logits", selected_logits.size(), selected_logits)
         mask_f = lambda x: torch.masked_select(x, idx_mask.unsqueeze(-1)).view(-1, 3)
-        selected_preds = torch.nn.functional.softmax(mask_f(outputs.logits[idx])).detach().numpy()
+        selected_preds = torch.nn.functional.softmax(mask_f(outputs.logits[idx])).detach().cpu().numpy()
         # print("selected_preds", selected_preds.shape, selected_preds)
 
         # print("===============================================================")
@@ -294,7 +294,7 @@ class NERModel_pytorch(bm.Model):
                         batch["labels"].view(-1),
                         reduce=False,
                         ignore_index=-100
-                    ).view(batch["labels"].size()).mean(dim=1).detach().numpy()
+                    ).view(batch["labels"].size()).mean(dim=1).detach().cpu().numpy()
 
                     # print(per_sample_loss.shape)
                     best, worst = np.argmin(per_sample_loss), np.argmax(per_sample_loss)
@@ -310,7 +310,7 @@ class NERModel_pytorch(bm.Model):
                     worst_tokens, worst_labels, worst_preds = self.filter_by_idx(tokenizer, batch, outputs, worst)
 
                     with training_logger.train():
-                        training_logger.log_metric("loss", loss.detach().numpy(), step=step)
+                        training_logger.log_metric("loss", loss.detach().cpu().numpy(), step=step)
 
                         training_logger.log_figure(
                             "best_sample_from_batch",
@@ -350,7 +350,7 @@ class NERModel_pytorch(bm.Model):
                         batch["labels"].view(-1),
                         reduce=False,
                         ignore_index=-100
-                    ).view(batch["labels"].size()).mean(dim=1).detach().numpy()
+                    ).view(batch["labels"].size()).mean(dim=1).detach().cpu().numpy()
 
                     best, worst = np.argmin(per_sample_loss), np.argmax(per_sample_loss)
 
