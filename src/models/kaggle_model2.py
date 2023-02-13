@@ -185,7 +185,7 @@ class KaggleModel2(bm.Model):
         tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
 
         opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
-
+        scheduler = torch.optim.lr_scheduler.MultiplicativeLR(opt, lr_lambda=lambda e:0.95)
         # get all samples
         train_samples = repository.get_training_data(
             config.get("balance_labels", False)
@@ -194,13 +194,10 @@ class KaggleModel2(bm.Model):
 
         config["step"] = 0
         for epoch in trange(config["num_epochs"]):
-            config["step"] = self._train_epoch(
-                config, model, tokenizer, train_samples, opt, training_logger, epoch
-            )
+            config["step"]  = self._train_epoch(config, model, tokenizer, train_samples, opt, training_logger, epoch, test_samples)
 
-            self._test_epoch(
-                config, model, tokenizer, test_samples, training_logger, epoch
-            )
+            #self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
+            scheduler.step()
             if config["save_model"]:
                 save_path = os.path.join(
                     config["model_path"],
@@ -209,16 +206,14 @@ class KaggleModel2(bm.Model):
                 model.save_pretrained(save_path)
                 tokenizer.save_pretrained(save_path)
 
-    def _train_epoch(
-        self, config, model, tokenizer, samples, opt, training_logger, curr_epoch
-    ) -> None:
+    def _train_epoch(self, config, model, tokenizer, samples, opt, training_logger, curr_epoch, test_samples) -> None:
         all_strings, all_labels = samples["entity"].values, samples["label"].values
         train_indices = list(range(len(all_labels)))
         shuffle(train_indices)
         train_strings = all_strings[train_indices]
         train_labels = all_labels[train_indices]
 
-        model.train()
+        
         iter = 0
         accum_for = config["accum_for"]
         running_total_loss = 0  # Display running average of loss across epoch
@@ -229,6 +224,7 @@ class KaggleModel2(bm.Model):
             desc="Epoch {}".format(curr_epoch),
         ) as t:
             for batch_idx_start in t:
+                model.train()
                 config["step"] += 1
                 iter += 1
                 batch_idx_end = min(
@@ -264,6 +260,18 @@ class KaggleModel2(bm.Model):
                 # else:
                 loss.backward()
 
+                if torch.cuda.is_available():
+                    running_total_loss += loss.detach().cpu().numpy()
+                else:
+                    running_total_loss += loss.detach().numpy()
+
+                t.set_postfix(loss=running_total_loss / iter)
+
+                if iter % accum_for == 0:
+                    opt.step()
+                    opt.zero_grad()
+                    
+                    
                 if iter % 10 == 0:
                     with training_logger.train():
                         training_logger.log_metric(
@@ -288,17 +296,96 @@ class KaggleModel2(bm.Model):
                             matches[~y_true].mean(),
                             step=config["step"],
                         )
+                    
 
-                if torch.cuda.is_available():
-                    running_total_loss += loss.detach().cpu().numpy()
-                else:
-                    running_total_loss += loss.detach().numpy()
+                    test_strings, test_labels = test_samples["entity"].values, test_samples["label"].values
 
-                t.set_postfix(loss=running_total_loss / iter)
+                    model.eval()
+                    iter = 0
+                    running_total_loss = 0
+                    test_preds = []
 
-                if iter % accum_for == 0:
-                    opt.step()
-                    opt.zero_grad()
+
+                    with trange(
+                        0,
+                        len(test_strings),
+                        config["batch_size"],
+                        desc="Epoch {}".format(curr_epoch),
+                    ) as t, torch.no_grad():
+                        for batch_idx_start in t:
+                            iter += 1
+                            batch_idx_end = min(
+                                batch_idx_start + config["batch_size"], len(test_strings)
+                            )
+
+                            current_batch = list(test_strings[batch_idx_start:batch_idx_end])
+                            batch_features = tokenizer(
+                                current_batch,
+                                truncation=True,
+                                max_length=64,
+                                padding="max_length",
+                                add_special_tokens=True,
+                                return_tensors="pt",
+                            )
+                            batch_labels = torch.tensor(test_labels[batch_idx_start:batch_idx_end])
+
+                            if torch.cuda.is_available():
+                                # the .long() call is from the original code, but I am not
+                                # sure why it is needed. I am not an avid pytorch user.
+                                batch_labels = batch_labels.long().cuda()
+                                batch_features = {k: v.cuda() for k, v in batch_features.items()}
+
+                            model_outputs = model(
+                                **batch_features, labels=batch_labels, return_dict=True
+                            )
+                            loss = model_outputs["loss"]
+                            loss = loss / config["accum_for"]  # Normalize if we're doing GA
+
+                            test_preds.append(
+                                    softmax(
+                                        model_outputs["logits"].detach().cpu().numpy(),
+                                        axis=1
+                                )
+                            )
+
+                            if torch.cuda.is_available():
+                                running_total_loss += loss.detach().cpu().numpy()
+                            else:
+                                running_total_loss += loss.detach().numpy()
+
+                            t.set_postfix(loss=running_total_loss / iter)   
+
+                    test_preds = np.concatenate(test_preds, axis=0)
+                    test_preds_labels = np.argmax(test_preds, axis=1)
+
+                    with training_logger.test():
+                        training_logger.log_metric(
+                            "loss",
+                            running_total_loss / iter,
+                            step=config["step"],
+                        )
+
+                        matches = test_preds_labels == test_labels
+                        training_logger.log_metric(
+                            "positive_accuracy",
+                            matches[test_labels].mean(),
+                            step=config["step"],
+                        )
+
+                        training_logger.log_metric(
+                            "negative_accuracy",
+                            matches[~test_labels].mean(),
+                            step=config["step"],
+                        )
+
+                        training_logger.log_confusion_matrix(
+                            y_true=test_labels,
+                            y_predicted=test_preds_labels,
+                            labels=['negative', 'positive'],
+                            index_to_example_function = lambda idx: test_strings[idx] + " " + str(test_preds[idx, test_preds_labels[idx]]),
+                            step=config["step"],
+                            title="Test Set Confusion Matrix",
+                        )
 
         return config["step"]
 

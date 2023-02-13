@@ -1,5 +1,6 @@
 name: kaggle_model2
 
+# use --env-manager=local on sci server
 conda_env: conda_env.linux.cpu.yaml
 
 entry_points:
