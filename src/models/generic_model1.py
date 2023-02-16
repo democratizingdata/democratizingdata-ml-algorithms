@@ -144,6 +144,7 @@ class GenericModel1(bm.Model):
 
                 # First process the support set ================================
                 output_support = model(**batch_support)
+                support_labels = batch_support["labels"] # [bs, 1]
                 support_hidden_states = output_support.last_hidden_state # [bs, seq_len, emb_dim]
                 # might be support_hidden_states = output_support.hidden_states[-1]
 
@@ -151,8 +152,10 @@ class GenericModel1(bm.Model):
                 # the first token is the CLS token which is the support embedding
                 support_embedding = support_hidden_states[:, 0, :] # [bs, emb_dim]
 
+                # NEED TO ALSO ZERO OUT BY ATTENTION MASK
+
                 # zero-out non mask tokens
-                #                [bs, seq_len, emb_dim] * [bs, seq_len, 1]
+                #                         [bs, seq_len, emb_dim] * [bs, seq_len, 1]
                 support_mask_tokens_seq = support_hidden_states * batch_query["float_mask_mask"].unsqueeze(-1) # [bs, seq_len, emb_dime]
                 support_mask_token_sum = support_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
                 support_mask_token_n = batch_query["float_mask_mask"].sum(dim=1, keepdim=True) # [bs, 1]
@@ -185,9 +188,80 @@ class GenericModel1(bm.Model):
 
                 # Third compute the loss =======================================
                 # From the document, Section 2.3.3.3. Applying criterions
+                # We apply ArcFace loss to two pairs of embeddings:
+                #   ● SUPPORT MASK and QUERY LABEL (if available) are considered class 0.
+                #   ● SUPPORT non-MASK and QUERY non-LABEL are considered class 1.
+                # We also apply ArcFace loss for these embeddings:
+                #   ● SUPPORT embeddings are considered class 0
+                #   ● Positive QUERY embeddings are considered class 0
+                #   ● Negative QUERY embeddings are considered class 1
+                #
+                # Different from the document, we are going to switch the classes
+                # so that the positive class is 1 and the negative class is 0.
+
+                # We want to group the masked tokens from the support set with
+                # the positive tokens from the query set. Both of these
+                # embeddings are from the same class, they represent dataset
+                # tokens.
+                class_1_embedding = torch.concat([mask_embedding, label_embedding], dim=0).mean(dim=0, keepdim=True) # [1, emb_dim]
+
+
+                # We want to group the non-masked tokens from the support set
+                # with the negative tokens from the query set. Both of these
+                # embeddings represent non-dataset tokens.
+                class_0_embedding = torch.concat([non_mask_embedding, non_label_embedding], dim=0).mean(dim=0, keepdim=True) # [1, emb_dim]
+
+
+                # We want to group the [cls] tokens into their respective classes
+                class_1_cls_support_embedding = support_embedding[support_labels == 1].mean(dim=0)  # [emb_dim]
+                class_0_cls_support_embedding = support_embedding[support_labels == 0].mean(dim=0)  # [emb_dim]
+
+                class_1_cls_query_embedding = label_embedding[query_labels == 1].mean(dim=0)  # [emb_dim]
+                class_0_cls_query_embedding = non_label_embedding[query_labels == 0].mean(dim=0)  # [emb_dim]
+
+                class_1_cls_embedding = torch.concat(
+                    [class_1_cls_support_embedding, class_1_cls_query_embedding],
+                    dim=0
+                ).mean(dim=0, keepdim=True) # [1, emb_dim]
+                class_0_cls_embedding = torch.concat(
+                    [class_0_cls_support_embedding, class_0_cls_query_embedding],
+                    dim=0
+                ).mean(dim=0, keepdim=True) # [1, emb_dim]
+
+                class_1_samples = torch.concat(
+                    [class_1_embedding, class_1_cls_embedding],
+                    dim=0
+                ) # [2, emb_dim]
+
+                class_0_samples = torch.concat(
+                    [class_0_embedding, class_0_cls_embedding],
+                    dim=0
+                ) # [2, emb_dim]
+
+
+                metric_labels = torch.concat(
+                    [
+                        torch.ones(len(class_1_samples)),
+                        torch.zeros(len(class_0_samples))
+                    ],
+                    dim=0
+                ) # [4]
+
+
+                # This is our metric based loss
+                loss_m =metric_loss(
+                    torch.concat([class_1_samples, class_0_samples], dim=0),
+                    metric_labels
+                )
+
+
+                # Now we compute the token classification loss for the query set
+
+                # TODO: continue here with token classification
 
 
 
+                metric_optimizer.step()
                 optimizer.step()
 
 

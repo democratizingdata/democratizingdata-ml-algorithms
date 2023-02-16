@@ -226,10 +226,11 @@ def snippet_to_classification_sample(path:str , row:pd.DataFrame) -> pd.DataFram
     })
 
 def snippet_to_masked_lm_sample(path:str, row:pd.DataFrame) -> pd.DataFrame:
-    tokens, _, ner_tags = get_sample_snippet(path, row["id"], row["snippet_index"])
+    tokens, pos_tags, ner_tags = get_sample_snippet(path, row["id"], row["snippet_index"])
 
     return pd.DataFrame({
         "text": [tokens.split()],
+        "pos_tags": [pos_tags.split()],
         "mask": [list(map(lambda x: x != "O", ner_tags.split()))],
         "label": [row["snippet_label"]]
     })
