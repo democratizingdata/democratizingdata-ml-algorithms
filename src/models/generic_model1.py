@@ -91,7 +91,13 @@ def prepare_batch(
         remove_columns=["text"]
     )
 
-    return data_collator(list(transformed_batch))
+    data = data_collator(list(transformed_batch))
+
+    # TODO: continue here, transform batch data to match what the training loop expects
+
+    return batch_query, batch_support, query_labels, support_labels
+
+
 
 class GenericModel1(bm.Model):
 
@@ -124,19 +130,30 @@ class GenericModel1(bm.Model):
                 model.train()
                 metric_loss.train()
 
-                batch = {k:v.to(device) for k,v in batch.items()}
-                batch_query, batch_support,query_labels = prepare_batch(tokenizer, collator, batch)
-
-                optimizer.zero_grad()
-                metric_optimizer.zero_grad()
-
-
-
-
                 # bs = support batch size
                 # bq = query batch size
                 # seq_len = sequence length
                 # emb_dim = embedding dimension
+
+                batch = {k:v.to(device) for k,v in batch.items()}
+                (
+                    batch_query,
+                    batch_support,
+                    query_labels,
+                    support_labels
+                ) = prepare_batch(tokenizer, collator, batch)
+
+                # These are the snippet level labels
+                query_seq_labels = query_labels["seq_labels"] # [bq, 1]
+                support_seq_labels = support_labels["seq_labels"] # [bs, 1]
+
+                # These indicate which of the support tokens are mask tokens
+                support_mask_token_indicator = support_labels["mask_token_indicator"] # [bs, seq_len]
+                # These indicate which of the query tokens are label tokens
+                query_label_token_indicator = query_labels["label_token_indicator"] # [bq, seq_len]
+
+                optimizer.zero_grad()
+                metric_optimizer.zero_grad()
 
                 # Variables are named to match the document from the first place
                 # solution document, linked above, Section 2.3.3.3. Embeddings extraction
@@ -144,7 +161,6 @@ class GenericModel1(bm.Model):
 
                 # First process the support set ================================
                 output_support = model(**batch_support)
-                support_labels = batch_support["labels"] # [bs, 1]
                 support_hidden_states = output_support.last_hidden_state # [bs, seq_len, emb_dim]
                 # might be support_hidden_states = output_support.hidden_states[-1]
 
@@ -156,15 +172,15 @@ class GenericModel1(bm.Model):
 
                 # zero-out non mask tokens
                 #                         [bs, seq_len, emb_dim] * [bs, seq_len, 1]
-                support_mask_tokens_seq = support_hidden_states * batch_query["float_mask_mask"].unsqueeze(-1) # [bs, seq_len, emb_dime]
+                support_mask_tokens_seq = support_hidden_states * support_mask_token_indicator.unsqueeze(-1) # [bs, seq_len, emb_dime]
                 support_mask_token_sum = support_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
-                support_mask_token_n = batch_query["float_mask_mask"].sum(dim=1, keepdim=True) # [bs, 1]
+                support_mask_token_n = support_mask_token_indicator.sum(dim=1, keepdim=True) # [bs, 1]
                 mask_embedding = support_mask_token_sum / support_mask_token_n # [bs, emb_dim]
 
                 # flip the mask and zero-out mask tokens
-                suppport_non_mask_tokens_seq = support_hidden_states * (1 - batch_query["float_mask_mask"]).unsqueeze(-1) # [bs, seq_len, emb_dime]
+                suppport_non_mask_tokens_seq = support_hidden_states * (1 - support_mask_token_indicator).unsqueeze(-1) # [bs, seq_len, emb_dime]
                 support_non_mask_token_sum = suppport_non_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
-                support_non_mask_token_n = (1 - batch_query["float_mask_mask"]).sum(dim=1, keepdim=True) # [bs, 1]
+                support_non_mask_token_n = (1 - support_mask_token_indicator).sum(dim=1, keepdim=True) # [bs, 1]
                 non_mask_embedding = support_non_mask_token_sum / support_non_mask_token_n # [bs, emb_dim]
                 # ==============================================================
 
@@ -173,15 +189,15 @@ class GenericModel1(bm.Model):
                 query_hidden_states = output_query.last_hidden_state # [bq, seq_len, emb_dim]
                 # might be query_hidden_states = output_query.hidden_states[-1]
 
-                query_mask_tokens_seq = query_hidden_states * batch_query["float_mask_mask"].unsqueeze(-1) # [bq, seq_len, emb_dime]
+                query_mask_tokens_seq = query_hidden_states * query_label_token_indicator.unsqueeze(-1) # [bq, seq_len, emb_dime]
                 query_mask_token_sum = query_mask_tokens_seq.sum(dim=1) # [bq, emb_dim]
-                query_mask_token_n = batch_query["float_mask_mask"].sum(dim=1, keepdim=True) # [bq, 1]
+                query_mask_token_n = query_label_token_indicator.sum(dim=1, keepdim=True) # [bq, 1]
                 label_embedding = query_mask_token_sum / query_mask_token_n # [bq, emb_dim]
 
                 # flip the mask and zero-out mask tokens
-                query_non_mask_tokens_seq = query_hidden_states * (1 - batch_query["float_mask_mask"]).unsqueeze(-1) # [bq, seq_len, emb_dime]
+                query_non_mask_tokens_seq = query_hidden_states * (1 - query_label_token_indicator).unsqueeze(-1) # [bq, seq_len, emb_dime]
                 query_non_mask_token_sum = query_non_mask_tokens_seq.sum(dim=1) # [bq, emb_dim]
-                query_non_mask_token_n = (1 - batch_query["float_mask_mask"]).sum(dim=1, keepdim=True) # [bq, 1]
+                query_non_mask_token_n = (1 - query_label_token_indicator).sum(dim=1, keepdim=True) # [bq, 1]
                 non_label_embedding = query_non_mask_token_sum / query_non_mask_token_n # [bq, emb_dim]
                 # ==============================================================
 
@@ -213,11 +229,11 @@ class GenericModel1(bm.Model):
 
 
                 # We want to group the [cls] tokens into their respective classes
-                class_1_cls_support_embedding = support_embedding[support_labels == 1].mean(dim=0)  # [emb_dim]
-                class_0_cls_support_embedding = support_embedding[support_labels == 0].mean(dim=0)  # [emb_dim]
+                class_1_cls_support_embedding = support_embedding[support_seq_labels == 1].mean(dim=0)  # [emb_dim]
+                class_0_cls_support_embedding = support_embedding[support_seq_labels == 0].mean(dim=0)  # [emb_dim]
 
-                class_1_cls_query_embedding = label_embedding[query_labels == 1].mean(dim=0)  # [emb_dim]
-                class_0_cls_query_embedding = non_label_embedding[query_labels == 0].mean(dim=0)  # [emb_dim]
+                class_1_cls_query_embedding = label_embedding[query_seq_labels == 1].mean(dim=0)  # [emb_dim]
+                class_0_cls_query_embedding = non_label_embedding[query_seq_labels == 0].mean(dim=0)  # [emb_dim]
 
                 class_1_cls_embedding = torch.concat(
                     [class_1_cls_support_embedding, class_1_cls_query_embedding],
@@ -247,22 +263,57 @@ class GenericModel1(bm.Model):
                     dim=0
                 ) # [4]
 
-
                 # This is our metric based loss
-                loss_m =metric_loss(
+                loss_m = metric_loss(
                     torch.concat([class_1_samples, class_0_samples], dim=0),
                     metric_labels
                 )
 
+                # Token classification loss -- from the document:
+                # Now we go to the primary objective, which is token
+                # classification.
+                # 1. We compute the cosine similarity between the extracted MASK
+                #    embedding and each token embedding from the query’s full
+                #    sequence embedding.
+                # 2. The result will then be multiplied by 10 and then
+                #    normalized by sigmoid function, the rescale is to ensure
+                #    the output range to be (almost) in the range of (0,1).
+                # 3. The ground truth is a binary vector with every token that
+                #    belongs to a dataset name denoted as 1 and the rest as 0.
+                #    104. The BCE loss is then applied for the output and the
+                #    groundtruth, and a training step is completed.
+                # 4. The BCE loss is then applied for the output and the
+                #    groundtruth, and a training step is completed.
 
-                # Now we compute the token classification loss for the query set
 
-                # TODO: continue here with token classification
+                # Step 1
+                cos_sim_mask_query = torch.nn.functional.cosine_similarity(
+                    # we need to add a 'token' dimension to the mask embedding
+                    # so that it can be broadcasted with the query_hidden_states
+                    mask_embedding.view(len(mask_embedding), 1, -1),
+                    query_hidden_states,
+                ) # [bq, seq_len]
 
+                # Step 2
+                cos_sim_mask_query = cos_sim_mask_query * 10 # [bq, seq_len]
 
+                # Step 3 -- we're going to skip this step and compute the loss
+                #           with respect to the logits, not the sigmoid because
+                #           it's more stable
+                # cos_sim_mask_query = torch.sigmoid(cos_sim_mask_query) # [bq, seq_len]
 
+                # Step 4
+                loss_t = torch.nn.functional.binary_cross_entropy(
+                    cos_sim_mask_query,
+                    batch_query["float_mask_mask"]
+                ) # [1]
+
+                loss_t.backward()
+                loss_m.backward()
                 metric_optimizer.step()
                 optimizer.step()
+                scheduler.step()
+                metric_scheduler.step()
 
 
 
