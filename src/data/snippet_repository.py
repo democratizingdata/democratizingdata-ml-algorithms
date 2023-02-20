@@ -186,8 +186,8 @@ def convert_document_to_samples(nlp: spacy.language.Language, row: pd.DataFrame)
 def save_samples(
     train_location: str, validation_location: str, row: pd.DataFrame
 ) -> None:
-    save_train_path = os.path.join(train_location, row["id"] + ".tsv")
 
+    save_train_path = os.path.join(train_location, row["id"] + ".tsv")
     save_validation_path = os.path.join(validation_location, row["id"] + ".tsv")
 
     try:
@@ -363,23 +363,30 @@ class SnippetRepository(Repository):
             self.build(build_options)
 
     def transform_df(self, is_validation:bool, df: pd.DataFrame) -> pd.DataFrame:
+
+        def double_check(
+            val:Union[SnippetRepositoryMode, str],
+            mode:SnippetRepositoryMode,
+        ) -> bool:
+            return val == mode or val.value == mode
+
         # this dataframe has the columns id, snippet_label, snippet_index
         # we need to retrieve the snippet and transform it depending on the
         # selected mode
         path = self.validation_files_location if is_validation else self.train_files_location
-        if self.mode == SnippetRepositoryMode.CLASSIFICATION.value:
+        if double_check(self.mode, SnippetRepositoryMode.CLASSIFICATION):
             # If mode is classification, we need to transform the rows to return
             # the snippet and the label
             return df.apply(
                 lambda row: snippet_to_classification_sample(path, row), axis=1
             )
-        elif self.mode == SnippetRepositoryMode.NER.value:
+        elif double_check(self.mode, SnippetRepositoryMode.NER):
             # If mode is NER, we need to transform the rows to return the snippet
             # as a token list and the label as a list of NER tags
             return df.apply(
                 lambda row: snippet_to_ner_sample(path, row), axis=1
             )
-        elif self.mode == SnippetRepositoryMode.MASKED_LM.value:
+        elif double_check(self.mode, SnippetRepositoryMode.MASKED_LM):
             # If mode is MASKED_LM, we need to transform the rows to return the
             # snippet as a token list and the label as a list of "mask" tokens
             return df.apply(

@@ -69,8 +69,7 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
 def prepare_batch(
         tokenizer: tfs.tokenization_utils_base.PreTrainedTokenizerBase,
         data_collator: tfs.data.data_collator.DataCollatorMixin,
-        lbl_to_id: Dict[str, int],
-        batch: pd.DataFrame
+        batch: pd.DataFrame,
     ) -> Dict[str, torch.Tensor]:
 
     ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
@@ -94,6 +93,9 @@ def prepare_batch(
     data = data_collator(list(transformed_batch))
 
     # TODO: continue here, transform batch data to match what the training loop expects
+
+    # *_labels should have keys "seq_labels" and "mask_token_indicator"
+
 
     return batch_query, batch_support, query_labels, support_labels
 
@@ -135,13 +137,13 @@ class GenericModel1(bm.Model):
                 # seq_len = sequence length
                 # emb_dim = embedding dimension
 
-                batch = {k:v.to(device) for k,v in batch.items()}
                 (
                     batch_query,
                     batch_support,
                     query_labels,
                     support_labels
                 ) = prepare_batch(tokenizer, collator, batch)
+                batch = {k:v.to(device) for k,v in batch.items()}
 
                 # These are the snippet level labels
                 query_seq_labels = query_labels["seq_labels"] # [bq, 1]
