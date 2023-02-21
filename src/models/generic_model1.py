@@ -10,7 +10,7 @@
 from functools import partial
 from itertools import islice
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import datasets as ds
 import pandas as pd
@@ -66,11 +66,50 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
     validate_config(config)
 
 
+def tokenize_and_align_labels(tokenizer_f, examples):
+    tokenized_inputs = tokenizer_f(examples["text"])
+
+    labels = []
+    for i, label in enumerate(examples["labels"]):
+        word_ids = tokenized_inputs.word_ids(batch_index=i)
+        label_ids = [-100] * len(word_ids) # assume all tokens are special
+        top_word_id = max(map(lambda x: x if x else -1, word_ids))
+        for word_idx in range(top_word_id + 1):
+            label_ids[word_ids.index(word_idx)] = label[word_idx]
+        labels.append(label_ids)
+
+    tokenized_inputs["labels"] = labels
+    return tokenized_inputs
+
+
+
+
+
 def prepare_batch(
         tokenizer: tfs.tokenization_utils_base.PreTrainedTokenizerBase,
         data_collator: tfs.data.data_collator.DataCollatorMixin,
+        n_query: int,
         batch: pd.DataFrame,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+
+    # we need to split the batch into support and query sets, well use the
+    # train/test split functionality from datasets.Dataset to select random
+    # subsets of the batch as the query/support sets. where query will be "train"
+    dataset = ds.Dataset.from_pandas(
+        batch.drop(columns=["pos_tags"])
+    ).train_test_split(train_size=n_query)
+
+    ds_query, ds_support = dataset["train"], dataset["test"]
+
+
+
+
+
+    query = batch.sample(n_query)
+    support = batch.drop(query.index)
+
+
+
 
     ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
     tokenize_f = partial(
@@ -142,7 +181,7 @@ class GenericModel1(bm.Model):
                     batch_support,
                     query_labels,
                     support_labels
-                ) = prepare_batch(tokenizer, collator, batch)
+                ) = prepare_batch(tokenizer, collator, config.get("n_query", 1), batch)
                 batch = {k:v.to(device) for k,v in batch.items()}
 
                 # These are the snippet level labels
@@ -282,8 +321,6 @@ class GenericModel1(bm.Model):
                 #    the output range to be (almost) in the range of (0,1).
                 # 3. The ground truth is a binary vector with every token that
                 #    belongs to a dataset name denoted as 1 and the rest as 0.
-                #    104. The BCE loss is then applied for the output and the
-                #    groundtruth, and a training step is completed.
                 # 4. The BCE loss is then applied for the output and the
                 #    groundtruth, and a training step is completed.
 
@@ -304,10 +341,16 @@ class GenericModel1(bm.Model):
                 #           it's more stable
                 # cos_sim_mask_query = torch.sigmoid(cos_sim_mask_query) # [bq, seq_len]
 
+
                 # Step 4
-                loss_t = torch.nn.functional.binary_cross_entropy(
+                # this will be 0 where the tokenizer set -100
+                # we don't want to penalize the loss for special tokens indicated
+                # by -100
+                mask_special = ((query_labels["mask_token_indicator"][0,:] == -100).float() - 1).abs()
+                loss_t = torch.nn.functional.binary_cross_entropy_with_logits(
                     cos_sim_mask_query,
-                    batch_query["float_mask_mask"]
+                    query_labels["mask_token_indicator"] * mask_special,
+                    weight=query_labels["attention_mask"],
                 ) # [1]
 
                 loss_t.backward()
