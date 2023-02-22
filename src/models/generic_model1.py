@@ -13,6 +13,9 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import datasets as ds
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import numpy as np
 import pandas as pd
 import torch
 import transformers as tfs
@@ -88,13 +91,13 @@ def tokenize_and_align_labels(
 
 
 def apply_mask_sample(
-    tokens:List[str], 
+    tokens:List[str],
     mask_token_indicator:List[float]
 ) -> List[str]:
 
     tokens = list(map(
-        lambda t, m: "[MASK]" if m else t, 
-        tokens, 
+        lambda t, m: "[MASK]" if m else t,
+        tokens,
         mask_token_indicator
     ))
     return tokens
@@ -119,14 +122,14 @@ def apply_mask_batched(dataset:Dict[str, Any]) -> Dict[str, Any]:
 
 
 def group_mask_sample(
-    tokens:List[str], 
+    tokens:List[str],
     mask_token_indicator:List[float]
 ) -> List[str]:
-   
+
     # group the masks
     grouped_text_masks = [tokens[0]]
     grouped_mask_token_indicator = [mask_token_indicator[0]]
-    
+
     for index in range(1, len(tokens)):
         if not (mask_token_indicator[index] == 1 and mask_token_indicator[index-1] == 1):
             grouped_text_masks.append(tokens[index])
@@ -136,7 +139,7 @@ def group_mask_sample(
 
 
 def convert_dataset(
-    tokenizer_f:Callable, 
+    tokenizer_f:Callable,
     collator:Callable,
     dataset:ds.Dataset
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
@@ -212,11 +215,40 @@ def prepare_batch(
     return batch_query, batch_support, labels_query, labels_support
 
 
+# based on
+# https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
+def color_text_figure_binary(tokens, cmap, y_true, y_pred, threshold=0.5):
+    f, ax = plt.subplots(figsize=(10, 1))
+    r = f.canvas.get_renderer()
+    ax.set_axis_off()
+    space = 0.025
+    w = 0.0
+    for i, (token, y, yh) in enumerate(zip(tokens, y_true, y_pred)):
+        t = ax.text(w, 0.25, token, color=cmap(y), ha="left", va="center", fontsize=18)
+        ax.text(w, 0.75, token, color=cmap(yh), ha="left", va="center", fontsize=18)
+
+        if y >= threshold:
+            ax.text(w, 0.0, "{:.2f}".format(y), color="black", ha="left", va="center", fontsize=10)
+        if yh >= threshold:
+            ax.text(w, 1.0, "{:.2f}".format(yh), color="black", ha="left", va="center", fontsize=10)
+
+        transf = ax.transData.inverted()
+        bb = t.get_window_extent(renderer=f.canvas.renderer)
+        bb = bb.transformed(transf)
+        w = w + bb.xmax-bb.xmin + space
+    return f
+
+
 class GenericModel1(bm.Model):
+    blk_grn = mcolors.LinearSegmentedColormap.from_list(
+        'my_colormap',
+        ['black','green'],
+    )
+
 
     def get_model_objects(
-        self, 
-        config:Dict[str, Any], 
+        self,
+        config:Dict[str, Any],
         include_optimizer:bool
     ) -> None:
 
@@ -246,7 +278,7 @@ class GenericModel1(bm.Model):
 
             if "scheduler" in config:
                 scheduler = eval(config["scheduler"])(
-                    optimizer, 
+                    optimizer,
                     **config.get("scheduler_kwargs", {})
                 )
             else:
@@ -265,7 +297,7 @@ class GenericModel1(bm.Model):
 
             if "metric_scheduler" in config:
                 metric_scheduler = eval(config["metric_scheduler"])(
-                    metric_optimizer, 
+                    metric_optimizer,
                     **config.get("metric_scheduler_kwargs", {})
                 )
             else:
@@ -273,7 +305,7 @@ class GenericModel1(bm.Model):
 
 
             return (
-                model, 
+                model,
                 tokenizer,
                 collator,
                 optimizer,
@@ -326,7 +358,7 @@ class GenericModel1(bm.Model):
                     query_labels,
                     support_labels
                 ) = prepare_batch(tokenizer, collator, config.get("n_query", 1), batch)
-                
+
                 send_to_device = lambda d: {k:v.to(device) for k,v in d.items()}
                 batch_query = send_to_device(batch_query)
                 batch_support = send_to_device(batch_support)
@@ -365,7 +397,7 @@ class GenericModel1(bm.Model):
                 support_mask_tokens_seq = support_hidden_states * support_mask_token_indicator.unsqueeze(-1) # [bs, seq_len, emb_dim]
                 support_mask_token_sum = support_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
                 support_mask_token_n = support_mask_token_indicator.sum(dim=1, keepdim=True) # [bs, 1]
-                mask_embedding = support_mask_token_sum / support_mask_token_n # [bs, emb_dim]
+                mask_embedding = (support_mask_token_sum / support_mask_token_n).mean(axis=0, keepdim=True) # [1, emb_dim]
 
                 # flip the mask and zero-out mask tokens
                 support_non_mask_tokens_seq = support_hidden_states * (1 - support_mask_token_indicator).unsqueeze(-1) # [bs, seq_len, emb_dim]
@@ -373,7 +405,7 @@ class GenericModel1(bm.Model):
                 support_non_mask_tokens_seq = support_non_mask_tokens_seq * batch_support["attention_mask"].unsqueeze(-1) # [bs, seq_len, emb_dim]
                 support_non_mask_token_sum = support_non_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
                 support_non_mask_token_n = (1 - support_mask_token_indicator).sum(dim=1, keepdim=True) # [bs, 1]
-                non_mask_embedding = support_non_mask_token_sum / support_non_mask_token_n # [bs, emb_dim]
+                non_mask_embedding = (support_non_mask_token_sum / support_non_mask_token_n).mean(axis=0, keepdim=True) # [1, emb_dim]
                 # ==============================================================
 
                 # Second process the query set =================================
@@ -388,7 +420,7 @@ class GenericModel1(bm.Model):
 
                 # flip the mask and zero-out mask tokens
                 query_non_mask_tokens_seq = query_hidden_states * (1 - query_label_token_indicator).unsqueeze(-1) # [bq, seq_len, emb_dime]
-                                            # [bq, seq_len, emb_dim]      * [bq, seq_len, 1]    
+                                            # [bq, seq_len, emb_dim]      * [bq, seq_len, 1]
                 query_non_mask_tokens_seq = query_non_mask_tokens_seq * batch_query["attention_mask"].unsqueeze(-1) # [bq, seq_len, emb_dim]
                 query_non_mask_token_sum = query_non_mask_tokens_seq.sum(dim=1) # [bq, emb_dim]
                 query_non_mask_token_n = (1 - query_label_token_indicator).sum(dim=1, keepdim=True) # [bq, 1]
@@ -421,14 +453,22 @@ class GenericModel1(bm.Model):
                 # embeddings represent non-dataset tokens.
                 class_0_embedding = torch.concat([non_mask_embedding, non_label_embedding], dim=0).mean(dim=0, keepdim=True) # [1, emb_dim]
 
-                print("support_embedding", support_embedding.size())
                 #TODO: continue here with the boolean mask flattening things
                 # We want to group the [cls] tokens into their respective classes
-                class_1_cls_support_embedding = support_embedding[support_seq_labels == 1, :].mean(dim=0)  # [emb_dim]
-                class_0_cls_support_embedding = support_embedding[support_seq_labels == 0, :].mean(dim=0)  # [emb_dim]
+                def masked_average(
+                    mask:torch.Tensor, # [bs]
+                    embeddings:torch.Tensor, # [bs, emb_dim]
+                ) -> torch.Tensor: # [emb_dim]
+                    mask_float = mask.float() # [bs]
+                    masked_vals = mask_float.unsqueeze(-1) * embeddings # [bs, emb_dim]
+                    n = mask_float.sum() # [1]
+                    return masked_vals.sum(dim=0, keepdim=True) / n # [1, emb_dim]
 
-                class_1_cls_query_embedding = label_embedding[query_seq_labels == 1].mean(dim=0)  # [emb_dim]
-                class_0_cls_query_embedding = non_label_embedding[query_seq_labels == 0].mean(dim=0)  # [emb_dim]
+                class_1_cls_support_embedding = masked_average(support_seq_labels == 1, support_embedding) # [1, emb_dim]
+                class_0_cls_support_embedding = masked_average(support_seq_labels == 0, support_embedding) # [1, emb_dim]
+
+                class_1_cls_query_embedding = masked_average(query_seq_labels == 1, label_embedding) # [1, emb_dim]
+                class_0_cls_query_embedding = masked_average(query_seq_labels == 0, non_label_embedding) # [1, emb_dim]
 
                 class_1_cls_embedding = torch.concat(
                     [class_1_cls_support_embedding, class_1_cls_query_embedding],
@@ -438,11 +478,6 @@ class GenericModel1(bm.Model):
                     [class_0_cls_support_embedding, class_0_cls_query_embedding],
                     dim=0
                 ).mean(dim=0, keepdim=True) # [1, emb_dim]
-
-                print("class_1_cls_embedding", class_1_cls_embedding.size())   
-                print("class_0_cls_embedding", class_0_cls_embedding.size())
-                print("class_1_embedding", class_1_embedding.size())
-
 
                 class_1_samples = torch.concat(
                     [class_1_embedding, class_1_cls_embedding],
@@ -454,11 +489,11 @@ class GenericModel1(bm.Model):
                     dim=0
                 ) # [2, emb_dim]
 
-
+                # labels need to be long type
                 metric_labels = torch.concat(
                     [
-                        torch.ones(len(class_1_samples)),
-                        torch.zeros(len(class_0_samples))
+                        torch.ones(len(class_1_samples), dtype=torch.long),
+                        torch.zeros(len(class_0_samples), dtype=torch.long)
                     ],
                     dim=0
                 ) # [4]
@@ -490,6 +525,7 @@ class GenericModel1(bm.Model):
                     # so that it can be broadcasted with the query_hidden_states
                     mask_embedding.view(len(mask_embedding), 1, -1),
                     query_hidden_states,
+                    dim=-1
                 ) # [bq, seq_len]
 
                 # Step 2
@@ -506,18 +542,107 @@ class GenericModel1(bm.Model):
                 # we don't want to penalize the loss for special tokens indicated
                 # by -100
                 mask_special = ((query_labels["mask_token_indicator"][0,:] == -100).float() - 1).abs()
-                loss_t = torch.nn.functional.binary_cross_entropy_with_logits(
+                masked_model_outputs = query_labels["mask_token_indicator"] * mask_special
+                loss_t_batch = torch.nn.functional.binary_cross_entropy_with_logits(
                     cos_sim_mask_query,
-                    query_labels["mask_token_indicator"] * mask_special,
-                    weight=query_labels["attention_mask"],
-                ) # [1]
+                    masked_model_outputs,
+                    weight=batch_query["attention_mask"],
+                    reduction="none"
+                ) # [bq, seq_len]
 
-                loss_t.backward()
+                loss_t_per_sample = loss_t_batch.sum(dim=-1) / batch_query["attention_mask"].sum(axis=-1) # [bq]
+
+                loss_t = loss_t_per_sample.mean()
+
+                # you have to pass retain_graph=true if you want to call backward
+                # multiple times on the same graph
+                loss_t.backward(retain_graph=True)
                 loss_m.backward()
                 metric_optimizer.step()
                 optimizer.step()
                 scheduler.step()
                 metric_scheduler.step()
+
+                if step % config.get("steps_per_eval", 50) == 0:
+
+                    persample_detached = loss_t_per_sample.detach().cpu().numpy()
+
+                    with training_logger.train():
+                        if persample_detached.shape[0] > 1:
+                            best_sample = np.argmin(persample_detached)
+                            worst_sample = np.argmax(persample_detached)
+
+                            best_f = color_text_figure_binary(
+                                tokenizer.convert_ids_to_tokens(
+                                    batch_query["input_ids"][best_sample].detach().cpu().numpy()
+                                ),
+                                GenericModel1.blk_grn,
+                                query_labels["mask_token_indicator"][best_sample].detach().cpu().numpy(),
+                                masked_model_outputs[best_sample].detach().cpu().numpy(),
+                                threshold=0.5,
+                            )
+                            training_logger.log_figure("Best Query", best_f, step=step)
+
+                            worst_f = color_text_figure_binary(
+                                tokenizer.convert_ids_to_tokens(
+                                    batch_query["input_ids"][worst_sample].detach().cpu().numpy()
+                                ),
+                                GenericModel1.blk_grn,
+                                query_labels["mask_token_indicator"][worst_sample].detach().cpu().numpy(),
+                                masked_model_outputs[worst_sample].detach().cpu().numpy(),
+                                threshold=0.5,
+                            )
+                            training_logger.log_figure("Worst Query", worst_f, step=step)
+
+
+                        else:
+                            f = color_text_figure_binary(
+                                tokenizer.convert_ids_to_tokens(
+                                    batch_query["input_ids"][0].detach().cpu().numpy()
+                                ),
+                                GenericModel1.blk_grn,
+                                query_labels["mask_token_indicator"][0].detach().cpu().numpy(),
+                                masked_model_outputs[0].detach().cpu().numpy(),
+                                threshold=0.5,
+                            )
+                            training_logger.log_figure("Query", f, step=step)
+
+
+                        training_logger.log_metric(
+                            "loss",
+                            persample_detached.mean(),
+                            step=step,
+                        )
+
+                        training_logger.log_metric(
+                            "metric_loss",
+                            loss_m.detach().cpu().numpy(),
+                            step=step,
+                        )
+
+
+                    # test evaluation ==========================================
+                    model.eval()
+                    metric_loss.eval()
+
+                    total_loss, total_n = 0, 0
+
+                    for i, batch in enumerate(tqdm(repository.get_test_data(
+                        batch_size=config["batch_size"],
+                        balanced=True,
+                    ), desc=f"Testing Epoch {epoch}")):
+                        pass
+
+                        # inference time is different than training time because
+                        # we need support sequences for inference
+
+
+
+                        if i == config.get("test_eval_batches", 10):
+                            break
+
+
+
 
 
 
