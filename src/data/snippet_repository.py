@@ -368,7 +368,7 @@ class SnippetRepository(Repository):
             val:Union[SnippetRepositoryMode, str],
             mode:SnippetRepositoryMode,
         ) -> bool:
-            return val == mode or val.value == mode
+            return val == mode or val == mode.value
 
         # this dataframe has the columns id, snippet_label, snippet_index
         # we need to retrieve the snippet and transform it depending on the

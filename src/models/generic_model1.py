@@ -8,17 +8,16 @@
 
 
 from functools import partial
-from itertools import islice
+from itertools import islice, starmap
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import datasets as ds
 import pandas as pd
 import torch
 import transformers as tfs
-from pytorch_metric_learning import metric_losses
+from pytorch_metric_learning import losses as metric_losses
 from tqdm import tqdm
-from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
 
 from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
@@ -62,15 +61,21 @@ def train(
 
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
-
     validate_config(config)
 
 
-def tokenize_and_align_labels(tokenizer_f, examples):
+def convert_to_T(T:type, vals:List[str]) -> List[float]:
+    return [T(x) for x in vals]
+
+
+def tokenize_and_align_labels(
+    tokenizer_f:Callable[[Dict[str, Any]], Dict[str, Any]],
+    examples:Dict[str, Any]
+) -> Dict[str, Any]:
     tokenized_inputs = tokenizer_f(examples["text"])
 
     labels = []
-    for i, label in enumerate(examples["labels"]):
+    for i, label in enumerate(examples["mask_token_indicator"]):
         word_ids = tokenized_inputs.word_ids(batch_index=i)
         label_ids = [-100] * len(word_ids) # assume all tokens are special
         top_word_id = max(map(lambda x: x if x else -1, word_ids))
@@ -78,11 +83,101 @@ def tokenize_and_align_labels(tokenizer_f, examples):
             label_ids[word_ids.index(word_idx)] = label[word_idx]
         labels.append(label_ids)
 
-    tokenized_inputs["labels"] = labels
+    tokenized_inputs["mask_token_indicator"] = labels
     return tokenized_inputs
 
 
+def apply_mask_sample(
+    tokens:List[str], 
+    mask_token_indicator:List[float]
+) -> List[str]:
 
+    tokens = list(map(
+        lambda t, m: "[MASK]" if m else t, 
+        tokens, 
+        mask_token_indicator
+    ))
+    return tokens
+
+
+def apply_mask_batched(dataset:Dict[str, Any]) -> Dict[str, Any]:
+    # inintially every token is masked, however, we want to group them
+    # so that a single token represents an entire dataset
+    ungrouped_masks = list(starmap(
+        apply_mask_sample,
+        zip(dataset["text"], dataset["mask"]),
+    ))
+
+    text_mask = list(zip(*list(starmap(
+        group_mask_sample,
+        zip(ungrouped_masks, dataset["mask"]),
+    ))))
+
+    dataset["text"], dataset["mask"] = list(text_mask[0]), list(text_mask[1])
+
+    return dataset
+
+
+def group_mask_sample(
+    tokens:List[str], 
+    mask_token_indicator:List[float]
+) -> List[str]:
+   
+    # group the masks
+    grouped_text_masks = [tokens[0]]
+    grouped_mask_token_indicator = [mask_token_indicator[0]]
+    
+    for index in range(1, len(tokens)):
+        if not (mask_token_indicator[index] == 1 and mask_token_indicator[index-1] == 1):
+            grouped_text_masks.append(tokens[index])
+            grouped_mask_token_indicator.append(mask_token_indicator[index])
+
+    return grouped_text_masks, grouped_mask_token_indicator
+
+
+def convert_dataset(
+    tokenizer_f:Callable, 
+    collator:Callable,
+    dataset:ds.Dataset
+) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+
+    convert_f = partial(convert_to_T, int)
+
+    dataset = dataset.map(
+        lambda dset: { "mask_token_indicator" : list(map(convert_f, dset["mask"]))},
+        batched=True,
+    ).map(
+        partial(tokenize_and_align_labels, tokenizer_f),
+        batched=True,
+    ).remove_columns(
+        ["text", "mask"]
+    # we rename mask_token_indicator to labels, because that is what the
+    # so that the data collator will pad it.
+    ).rename_column(
+        "mask_token_indicator", "labels"
+    ).rename_column(
+        "label", "seq_labels"
+    )
+
+    # the collator doesn't know what to do with the seq_labels, so we
+    # remove it, and then add it back in after the collator is done.
+    # The collator also changes our type from Dataset to dict, so we
+    # we are now working with a dictionary of tensors.
+    tmp_seq_labels = dataset["seq_labels"]
+    dataset = collator(list(dataset.remove_columns(["seq_labels"])))
+
+    dataset_inputs = dict(
+        input_ids=dataset["input_ids"],
+        attention_mask=dataset["attention_mask"],
+    )
+
+    dataset_labels = dict(
+        mask_token_indicator = dataset["labels"],
+        seq_labels = torch.Tensor(tmp_seq_labels),
+    )
+    # At this point, the dataset is a dictionary of tensors, where the
+    # tensors are all the same length.
+    return dataset_inputs, dataset_labels
 
 
 def prepare_batch(
@@ -99,48 +194,97 @@ def prepare_batch(
         batch.drop(columns=["pos_tags"])
     ).train_test_split(train_size=n_query)
 
-    ds_query, ds_support = dataset["train"], dataset["test"]
+    ds_query= dataset["train"]
+    ds_support = dataset["test"].map(apply_mask_batched, batched=True)
 
-
-
-
-
-    query = batch.sample(n_query)
-    support = batch.drop(query.index)
-
-
-
-
-    ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
-    tokenize_f = partial(
-        tokenize_and_align_labels,
-        partial(tokenizer, is_split_into_words=True, truncation=True),
+    batch_query, labels_query = convert_dataset(
+        tokenizer_f = partial(tokenizer, is_split_into_words=True, truncation=True),
+        collator = data_collator,
+        dataset = ds_query,
     )
 
-
-    transformed_batch = ds.Dataset.from_pandas(
-         batch.drop(columns=["tags"]).rename(columns={"ner_tags": "labels"})
-    ).map(
-        ner_to_id_f,
-        batched=True
-    ).map(
-        tokenize_f,
-        batched=True,
-        remove_columns=["text"]
+    batch_support, labels_support = convert_dataset(
+        tokenizer_f = partial(tokenizer, is_split_into_words=True, truncation=True),
+        collator = data_collator,
+        dataset = ds_support,
     )
 
-    data = data_collator(list(transformed_batch))
-
-    # TODO: continue here, transform batch data to match what the training loop expects
-
-    # *_labels should have keys "seq_labels" and "mask_token_indicator"
-
-
-    return batch_query, batch_support, query_labels, support_labels
-
+    return batch_query, batch_support, labels_query, labels_support
 
 
 class GenericModel1(bm.Model):
+
+    def get_model_objects(
+        self, 
+        config:Dict[str, Any], 
+        include_optimizer:bool
+    ) -> None:
+
+        tokenizer = tfs.AutoTokenizer.from_pretrained(
+            config["model_tokenizer_name"],
+            **config.get("tokenizer_kwargs", {})
+        )
+
+        collator = tfs.data.data_collator.DataCollatorForTokenClassification(
+            tokenizer,
+            return_tensors="pt",
+            label_pad_token_id=0,
+        )
+
+        model = tfs.AutoModel.from_pretrained(
+            config["model_tokenizer_name"],
+            **config.get("model_kwargs", {})
+        )
+
+        if torch.cuda.is_available(): model = model.cuda()
+
+        if include_optimizer:
+            optimizer = eval(config["optimizer"])(
+                model.parameters(),
+                **config.get("optimizer_kwargs", {})
+            )
+
+            if "scheduler" in config:
+                scheduler = eval(config["scheduler"])(
+                    optimizer, 
+                    **config.get("scheduler_kwargs", {})
+                )
+            else:
+                scheduler = bm.MockLRScheduler()
+
+            metric_loss = metric_losses.ArcFaceLoss(
+                num_classes=2,
+                embedding_size=model.config.hidden_size,
+                **config.get("metric_loss_kwargs", {})
+            )
+
+            metric_optimizer = eval(config["metric_optimizer"])(
+                metric_loss.parameters(),
+                **config.get("metric_optimizer_kwargs", {})
+            )
+
+            if "metric_scheduler" in config:
+                metric_scheduler = eval(config["metric_scheduler"])(
+                    metric_optimizer, 
+                    **config.get("metric_scheduler_kwargs", {})
+                )
+            else:
+                metric_scheduler = bm.MockLRScheduler()
+
+
+            return (
+                model, 
+                tokenizer,
+                collator,
+                optimizer,
+                scheduler,
+                metric_loss,
+                metric_optimizer,
+                metric_scheduler
+            )
+        else:
+            return model, tokenizer, collator
+
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         return super().inference(config, df)
@@ -182,7 +326,12 @@ class GenericModel1(bm.Model):
                     query_labels,
                     support_labels
                 ) = prepare_batch(tokenizer, collator, config.get("n_query", 1), batch)
-                batch = {k:v.to(device) for k,v in batch.items()}
+                
+                send_to_device = lambda d: {k:v.to(device) for k,v in d.items()}
+                batch_query = send_to_device(batch_query)
+                batch_support = send_to_device(batch_support)
+                query_labels = send_to_device(query_labels)
+                support_labels = send_to_device(support_labels)
 
                 # These are the snippet level labels
                 query_seq_labels = query_labels["seq_labels"] # [bq, 1]
@@ -191,7 +340,7 @@ class GenericModel1(bm.Model):
                 # These indicate which of the support tokens are mask tokens
                 support_mask_token_indicator = support_labels["mask_token_indicator"] # [bs, seq_len]
                 # These indicate which of the query tokens are label tokens
-                query_label_token_indicator = query_labels["label_token_indicator"] # [bq, seq_len]
+                query_label_token_indicator = query_labels["mask_token_indicator"] # [bq, seq_len]
 
                 optimizer.zero_grad()
                 metric_optimizer.zero_grad()
@@ -213,14 +362,16 @@ class GenericModel1(bm.Model):
 
                 # zero-out non mask tokens
                 #                         [bs, seq_len, emb_dim] * [bs, seq_len, 1]
-                support_mask_tokens_seq = support_hidden_states * support_mask_token_indicator.unsqueeze(-1) # [bs, seq_len, emb_dime]
+                support_mask_tokens_seq = support_hidden_states * support_mask_token_indicator.unsqueeze(-1) # [bs, seq_len, emb_dim]
                 support_mask_token_sum = support_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
                 support_mask_token_n = support_mask_token_indicator.sum(dim=1, keepdim=True) # [bs, 1]
                 mask_embedding = support_mask_token_sum / support_mask_token_n # [bs, emb_dim]
 
                 # flip the mask and zero-out mask tokens
-                suppport_non_mask_tokens_seq = support_hidden_states * (1 - support_mask_token_indicator).unsqueeze(-1) # [bs, seq_len, emb_dime]
-                support_non_mask_token_sum = suppport_non_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
+                support_non_mask_tokens_seq = support_hidden_states * (1 - support_mask_token_indicator).unsqueeze(-1) # [bs, seq_len, emb_dim]
+                                            # [bs, seq_len, emb_dim]      * [bs, seq_len, 1]
+                support_non_mask_tokens_seq = support_non_mask_tokens_seq * batch_support["attention_mask"].unsqueeze(-1) # [bs, seq_len, emb_dim]
+                support_non_mask_token_sum = support_non_mask_tokens_seq.sum(dim=1) # [bs, emb_dim]
                 support_non_mask_token_n = (1 - support_mask_token_indicator).sum(dim=1, keepdim=True) # [bs, 1]
                 non_mask_embedding = support_non_mask_token_sum / support_non_mask_token_n # [bs, emb_dim]
                 # ==============================================================
@@ -237,6 +388,8 @@ class GenericModel1(bm.Model):
 
                 # flip the mask and zero-out mask tokens
                 query_non_mask_tokens_seq = query_hidden_states * (1 - query_label_token_indicator).unsqueeze(-1) # [bq, seq_len, emb_dime]
+                                            # [bq, seq_len, emb_dim]      * [bq, seq_len, 1]    
+                query_non_mask_tokens_seq = query_non_mask_tokens_seq * batch_query["attention_mask"].unsqueeze(-1) # [bq, seq_len, emb_dim]
                 query_non_mask_token_sum = query_non_mask_tokens_seq.sum(dim=1) # [bq, emb_dim]
                 query_non_mask_token_n = (1 - query_label_token_indicator).sum(dim=1, keepdim=True) # [bq, 1]
                 non_label_embedding = query_non_mask_token_sum / query_non_mask_token_n # [bq, emb_dim]
@@ -268,10 +421,11 @@ class GenericModel1(bm.Model):
                 # embeddings represent non-dataset tokens.
                 class_0_embedding = torch.concat([non_mask_embedding, non_label_embedding], dim=0).mean(dim=0, keepdim=True) # [1, emb_dim]
 
-
+                print("support_embedding", support_embedding.size())
+                #TODO: continue here with the boolean mask flattening things
                 # We want to group the [cls] tokens into their respective classes
-                class_1_cls_support_embedding = support_embedding[support_seq_labels == 1].mean(dim=0)  # [emb_dim]
-                class_0_cls_support_embedding = support_embedding[support_seq_labels == 0].mean(dim=0)  # [emb_dim]
+                class_1_cls_support_embedding = support_embedding[support_seq_labels == 1, :].mean(dim=0)  # [emb_dim]
+                class_0_cls_support_embedding = support_embedding[support_seq_labels == 0, :].mean(dim=0)  # [emb_dim]
 
                 class_1_cls_query_embedding = label_embedding[query_seq_labels == 1].mean(dim=0)  # [emb_dim]
                 class_0_cls_query_embedding = non_label_embedding[query_seq_labels == 0].mean(dim=0)  # [emb_dim]
@@ -284,6 +438,11 @@ class GenericModel1(bm.Model):
                     [class_0_cls_support_embedding, class_0_cls_query_embedding],
                     dim=0
                 ).mean(dim=0, keepdim=True) # [1, emb_dim]
+
+                print("class_1_cls_embedding", class_1_cls_embedding.size())   
+                print("class_0_cls_embedding", class_0_cls_embedding.size())
+                print("class_1_embedding", class_1_embedding.size())
+
 
                 class_1_samples = torch.concat(
                     [class_1_embedding, class_1_cls_embedding],
@@ -364,6 +523,33 @@ class GenericModel1(bm.Model):
 
 
 if __name__ == "__main__":
-    bm.train = train
-    bm.validate = validate
-    bm.main()
+    # bm.train = train
+    # bm.validate = validate
+    # bm.main()
+
+    from src.data.repository_resolver import resolve_repo
+
+    repository = resolve_repo("snippet-masked_lm")
+    config = dict(
+        model_tokenizer_name =  "allenai/scibert_scivocab_cased",
+        tokenizer_kwargs = {},
+        model_kwargs = {},
+        optimizer =  "torch.optim.AdamW",
+        optimizer_kwargs = dict(lr=1e-5),
+        metric_optimizer = "torch.optim.SGD",
+        metric_optimizer_kwargs = dict(lr=1e-2),
+        batch_size = 8,
+        epochs = 1
+    )
+
+    from comet_ml import Experiment
+
+    training_logger = Experiment(
+        workspace="democratizingdata",
+        project_name="generic-model1",
+        auto_metric_logging=False,
+        disabled=True,
+    )
+
+    model = GenericModel1()
+    model.train(repository, config, training_logger)
