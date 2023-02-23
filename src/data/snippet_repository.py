@@ -130,7 +130,7 @@ def convert_document_to_samples(nlp: spacy.language.Language, row: pd.DataFrame)
             re.compile, map(RegexModel.regexify_keyword, row["extra_labels"].split("|"))
         )
     )
-    for sentence in filter(lambda s: len(s)>5, doc.sents):
+    for sentence in filter(lambda s: len(s) > 5, doc.sents):
         tokens, tags, label_ner_tags = tag_sentence(nlp, labels, sentence)
 
         contains_label = any(map(lambda x: x != "O", label_ner_tags))
@@ -153,10 +153,9 @@ def convert_document_to_samples(nlp: spacy.language.Language, row: pd.DataFrame)
         #     lambda token, tag, ner_tag: f"{token}\t{tag}\t{ner_tag}\n",
         #     zip(tokens, tags, ner_tags)
         # ))
-        clean_tokens, clean_tags, clean_ner_tags = list(zip(*filter(
-            lambda x: x[0] != " ",
-            zip(tokens, tags, ner_tags)
-        )))
+        clean_tokens, clean_tags, clean_ner_tags = list(
+            zip(*filter(lambda x: x[0] != " ", zip(tokens, tags, ner_tags)))
+        )
 
         tagged_formatted_tokens = (
             "\t".join(
@@ -212,40 +211,49 @@ def get_snippet_labels(root_path: str, row: pd.DataFrame) -> np.ndarray:
 
     return np.array(labels)
 
-def get_sample_snippet(path:str, id:str, index:int)-> Tuple[str, str, str]:
+
+def get_sample_snippet(path: str, id: str, index: int) -> Tuple[str, str, str]:
     with open(os.path.join(path, id + ".tsv"), "r") as f:
         lines = f.readlines()
     return lines[index].strip().split("\t")[1:]
 
-def snippet_to_classification_sample(path:str , row:pd.DataFrame) -> pd.DataFrame:
+
+def snippet_to_classification_sample(path: str, row: pd.DataFrame) -> pd.DataFrame:
     tokens, _, _ = get_sample_snippet(path, row["id"], row["snippet_index"])
 
-    return pd.DataFrame({
-        "text": [tokens],
-        "label": [row["snippet_label"]]
-    })
+    return pd.DataFrame({"text": [tokens], "label": [row["snippet_label"]]})
 
-def snippet_to_masked_lm_sample(path:str, row:pd.DataFrame) -> pd.DataFrame:
-    tokens, pos_tags, ner_tags = get_sample_snippet(path, row["id"], row["snippet_index"])
 
-    return pd.DataFrame({
-        "text": [tokens.split()],
-        "pos_tags": [pos_tags.split()],
-        "mask": [list(map(lambda x: x != "O", ner_tags.split()))],
-        "label": [row["snippet_label"]]
-    })
+def snippet_to_masked_lm_sample(path: str, row: pd.DataFrame) -> pd.DataFrame:
+    tokens, pos_tags, ner_tags = get_sample_snippet(
+        path, row["id"], row["snippet_index"]
+    )
 
-def snippet_to_ner_sample(path:str, row:pd.DataFrame) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "text": [tokens.split()],
+            "pos_tags": [pos_tags.split()],
+            "mask": [list(map(lambda x: x != "O", ner_tags.split()))],
+            "label": [row["snippet_label"]],
+        }
+    )
+
+
+def snippet_to_ner_sample(path: str, row: pd.DataFrame) -> pd.DataFrame:
     tokens, tags, ner_tags = get_sample_snippet(path, row["id"], row["snippet_index"])
 
-    return pd.DataFrame({
-        "text": [tokens.split()],
-        "tags": [tags.split()],
-        "ner_tags": [ner_tags.split()]
-    })
+    return pd.DataFrame(
+        {
+            "text": [tokens.split()],
+            "tags": [tags.split()],
+            "ner_tags": [ner_tags.split()],
+        }
+    )
 
 
-def extract_entities_for_visualization(text:List[str], ner_tags:List[str]) -> List[Dict[str, Union[int,str]]]:
+def extract_entities_for_visualization(
+    text: List[str], ner_tags: List[str]
+) -> List[Dict[str, Union[int, str]]]:
     """Extracts entities from a list of tokens and their corresponding NER tags.
     Args:
         text (List[str]): The list of tokens.
@@ -262,24 +270,16 @@ def extract_entities_for_visualization(text:List[str], ner_tags:List[str]) -> Li
     end = 0
     in_ent = False
     for token, tag in zip(text, ner_tags):
-        token_length = len(token) + 1 # plus a space
+        token_length = len(token) + 1  # plus a space
         if tag == "I-DAT":
             in_ent = True
             end += token_length
         elif tag == "O" and in_ent:
-            entities.append({
-                "start": start,
-                "end": end,
-                "label": "Dataset"
-            })
+            entities.append({"start": start, "end": end, "label": "Dataset"})
             in_ent = False
             start = end
         elif tag == "B-DAT":
-            entities.append({
-                "start": start,
-                "end": end,
-                "label": "Dataset"
-            })
+            entities.append({"start": start, "end": end, "label": "Dataset"})
             start = end
             end += token_length
         else:
@@ -289,24 +289,20 @@ def extract_entities_for_visualization(text:List[str], ner_tags:List[str]) -> Li
 
     return entities
 
-def visualize_ner_tags(
-    text: str, ner_tags: List[str]
-) -> Tuple[str, str, str]:
+
+def visualize_ner_tags(text: str, ner_tags: List[str]) -> Tuple[str, str, str]:
     """Visualize NER tags in a text."""
     entities = extract_entities_for_visualization(text, ner_tags)
 
-    ex = [{
-        "text": " ".join(text),
-        "ents": entities,
-        "title": None
-    }]
+    ex = [{"text": " ".join(text), "ents": entities, "title": None}]
 
     displacy.render(
         ex,
         style="ent",
         manual=True,
-        options={"colors":{"Dataset": "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}}
+        options={"colors": {"Dataset": "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}},
     )
+
 
 class SnippetRepositoryMode(Enum):
     NER = "ner"
@@ -362,18 +358,21 @@ class SnippetRepository(Repository):
             self.nlp = spacy.load("en_core_web_sm")
             self.build(build_options)
 
-    def transform_df(self, is_validation:bool, df: pd.DataFrame) -> pd.DataFrame:
-
+    def transform_df(self, is_validation: bool, df: pd.DataFrame) -> pd.DataFrame:
         def double_check(
-            val:Union[SnippetRepositoryMode, str],
-            mode:SnippetRepositoryMode,
+            val: Union[SnippetRepositoryMode, str],
+            mode: SnippetRepositoryMode,
         ) -> bool:
             return val == mode or val == mode.value
 
         # this dataframe has the columns id, snippet_label, snippet_index
         # we need to retrieve the snippet and transform it depending on the
         # selected mode
-        path = self.validation_files_location if is_validation else self.train_files_location
+        path = (
+            self.validation_files_location
+            if is_validation
+            else self.train_files_location
+        )
         if double_check(self.mode, SnippetRepositoryMode.CLASSIFICATION):
             # If mode is classification, we need to transform the rows to return
             # the snippet and the label
@@ -383,22 +382,18 @@ class SnippetRepository(Repository):
         elif double_check(self.mode, SnippetRepositoryMode.NER):
             # If mode is NER, we need to transform the rows to return the snippet
             # as a token list and the label as a list of NER tags
-            return df.apply(
-                lambda row: snippet_to_ner_sample(path, row), axis=1
-            )
+            return df.apply(lambda row: snippet_to_ner_sample(path, row), axis=1)
         elif double_check(self.mode, SnippetRepositoryMode.MASKED_LM):
             # If mode is MASKED_LM, we need to transform the rows to return the
             # snippet as a token list and the label as a list of "mask" tokens
-            return df.apply(
-                lambda row: snippet_to_masked_lm_sample(path, row), axis=1
-            )
+            return df.apply(lambda row: snippet_to_masked_lm_sample(path, row), axis=1)
         else:
             raise ValueError(f"Invalid mode {self.mode}")
 
     def get_iter_or_df(
         self,
-        path:str,
-        transform_f:Callable[[pd.DataFrame], pd.DataFrame] = lambda x: x,
+        path: str,
+        transform_f: Callable[[pd.DataFrame], pd.DataFrame] = lambda x: x,
         batch_size: Optional[int] = None,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
         def iter_f():
@@ -411,21 +406,15 @@ class SnippetRepository(Repository):
             df = pd.read_csv(path)
             return transform_f(df)
 
-
     def get_training_data(
         self, batch_size: Optional[int] = None, balance_labels: bool = False
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        path = (
-            self.train_balanced_dataframe
-            if balance_labels
-            else self.train_dataframe
-        )
+        path = self.train_balanced_dataframe if balance_labels else self.train_dataframe
 
         transform_f = partial(self.transform_df, False)
         aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
         transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
-        return self.get_iter_or_df(path, transform_aggregate_f,  batch_size)
-
+        return self.get_iter_or_df(path, transform_aggregate_f, batch_size)
 
     def get_test_data(
         self, batch_size: Optional[int] = None
@@ -433,12 +422,16 @@ class SnippetRepository(Repository):
         transform_f = partial(self.transform_df, False)
         aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
         transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
-        return self.get_iter_or_df(self.test_dataframe, transform_aggregate_f, batch_size)
+        return self.get_iter_or_df(
+            self.test_dataframe, transform_aggregate_f, batch_size
+        )
 
     def get_validation_data(
         self, batch_size: Optional[int] = None
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        return self.get_iter_or_df(self.validation_dataframe, partial(self.transform_df, True), batch_size)
+        return self.get_iter_or_df(
+            self.validation_dataframe, partial(self.transform_df, True), batch_size
+        )
 
     @staticmethod
     def detect_labels(labels: List[re.Pattern], sentence: str) -> List[List[str]]:
@@ -454,7 +447,7 @@ class SnippetRepository(Repository):
         process_n = build_options.get("process_n", 100)
 
         print("Loading Kaggle training labels...")
-        all_kaggle_train = pd.read_csv(self.train_labels_location)#.iloc[:500, :]
+        all_kaggle_train = pd.read_csv(self.train_labels_location)  # .iloc[:500, :]
         split_training_data = np.array_split(
             all_kaggle_train, len(all_kaggle_train) // process_n
         )
@@ -607,12 +600,16 @@ class SnippetRepository(Repository):
         validation_samples["snippet_label"] = validation_samples.apply(
             partial(get_snippet_labels, self.validation_files_location), axis=1
         )
-        validation_samples = validation_samples.loc[validation_samples.apply(lambda x: len(x["snippet_label"]) > 0, axis=1), :]
+        validation_samples = validation_samples.loc[
+            validation_samples.apply(lambda x: len(x["snippet_label"]) > 0, axis=1), :
+        ]
 
         validation_samples["snippet_index"] = validation_samples["snippet_label"].apply(
             lambda x: [i for i in range(len(x))]
         )
-        validation_samples = validation_samples.explode(["snippet_label", "snippet_index"])
+        validation_samples = validation_samples.explode(
+            ["snippet_label", "snippet_index"]
+        )
 
         train_df, test_df = train_test_split(
             train_samples, test_size=0.2, random_state=42
@@ -625,7 +622,8 @@ class SnippetRepository(Repository):
 
         ros = RandomOverSampler(random_state=42, sampling_strategy=1)
         train_df, train_df["snippet_label"] = ros.fit_resample(
-            train_df.drop(columns=["snippet_label"]), train_df["snippet_label"].astype(int)
+            train_df.drop(columns=["snippet_label"]),
+            train_df["snippet_label"].astype(int),
         )
         train_df = train_df.sample(frac=1).reset_index(drop=True)
         train_df.to_csv(self.train_balanced_dataframe, index=False)

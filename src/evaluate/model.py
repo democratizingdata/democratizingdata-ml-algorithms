@@ -151,10 +151,14 @@ def evaluate_model(
     validation_dataframe["statistics"] = output.apply(calc_f, axis=1)
 
     all_labels = list(
-        chain(*list(map(lambda x: x["labels"], validation_dataframe["statistics"].values)))
+        chain(
+            *list(map(lambda x: x["labels"], validation_dataframe["statistics"].values))
+        )
     )
     global_stats = list(
-        chain(*list(map(lambda x: x["stats"], validation_dataframe["statistics"].values)))
+        chain(
+            *list(map(lambda x: x["stats"], validation_dataframe["statistics"].values))
+        )
     )
 
     return ModelEvaluation(
