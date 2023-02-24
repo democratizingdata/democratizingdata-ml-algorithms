@@ -1,0 +1,20 @@
+name: generic_model1
+channels:
+- pytorch
+- HuggingFace
+- comet_ml
+- conda-forge
+dependencies:
+- python=3.10
+- comet_ml
+- datasets
+- matplotlib
+- pandas
+- pip
+- pytorch
+- pytorch-metric-learning
+- scikit-learn
+- tqdm
+- thefuzz
+- transformers
+- unidecode
