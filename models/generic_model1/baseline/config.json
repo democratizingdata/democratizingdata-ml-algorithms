@@ -1,0 +1,22 @@
+{
+    "model_tokenizer_name":"allenai/scibert_scivocab_cased",
+    "tokenizer_kwargs":{},
+    "tokenizer_call_kwargs": {
+        "max_length":512,
+        "truncation":true,
+        "is_split_into_words": true
+    },
+    "model_kwargs":{},
+    "optimizer":"torch.optim.AdamW",
+    "optimizer_kwargs":{"lr":1e-5},
+    "metric_optimizer":"torch.optim.SGD",
+    "metric_optimizer_kwargs":{"lr":1e-3},
+    "batch_size":8,
+    "epochs":1,
+    "steps_per_epoch":1000,
+    "steps_per_eval":10,
+    "balance_labels":true,
+    "n_query":2,
+    "save_model":true,
+    "model_path":"baseline"
+}

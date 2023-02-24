@@ -9,6 +9,7 @@
 from functools import partial
 from itertools import islice, starmap
 import logging
+import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import datasets as ds
@@ -45,6 +46,11 @@ def validate_config(config: Dict[str, Any]) -> None:
     missing_keys = expected_keys - set(config.keys())
     assert not missing_keys, f"Missing keys: {missing_keys}"
 
+    if "save_model" in config:
+        assert (
+            "model_path" in config
+        ), "if save_model is true, you need to provide a path"
+
 
 def train(
     repository: Repository,
@@ -58,10 +64,14 @@ def train(
             "model_tokenizer_name": config["model_tokenizer_name"],
             "optimizer": config["optimizer"],
         }
+        | config["tokenizer_call_kwargs"]
         | config["tokenizer_kwargs"]
         | config["model_kwargs"]
         | config["optimizer_kwargs"]
     )
+
+    model = GenericModel1()
+    model.train(repository, config, training_logger)
 
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
@@ -178,8 +188,8 @@ def convert_dataset(
         attention_mask=dataset["attention_mask"],
     )
 
-    mask_token_indicator = torch.where(dataset["labels"]==1, 1, 0)
-    special_token_indicator = torch.where(dataset["labels"]==-100, 1, 0)
+    mask_token_indicator = torch.where(dataset["labels"] == 1, 1, 0)
+    special_token_indicator = torch.where(dataset["labels"] == -100, 1, 0)
 
     dataset_labels = dict(
         mask_token_indicator=mask_token_indicator,
@@ -207,9 +217,31 @@ def prepare_batch(
     # we need to split the batch into support and query sets, well use the
     # train/test split functionality from datasets.Dataset to select random
     # subsets of the batch as the query/support sets. where query will be "train"
-    dataset = ds.Dataset.from_pandas(batch.drop(columns=["pos_tags"])).train_test_split(
-        train_size=n_query
-    )
+    if n_query > 1:
+        dataset = ds.Dataset.from_pandas(
+            batch.drop(columns=["pos_tags"])
+        ).class_encode_column("label")
+
+        # it can be the case thatll of the samples come from one class. That will
+        # cause an error when we try to split the dataset.
+        try:
+            dataset = dataset.train_test_split(
+                train_size=n_query, stratify_by_column="label"
+            )
+        except ValueError as e:
+            label_count_issues = [
+                "minimum number of groups for any class",
+                "minimum class count",
+                "should be greater or equal to the number of classes",
+            ]
+            if not any(map(lambda x: x in str(e).lower(), label_count_issues)):
+                raise e
+
+            dataset = dataset.train_test_split(train_size=n_query)
+    else:
+        dataset = ds.Dataset.from_pandas(
+            batch.drop(columns=["pos_tags"])
+        ).train_test_split(train_size=n_query)
 
     ds_query = dataset["train"]
     ds_support = dataset["test"].map(apply_mask_batched, batched=True)
@@ -236,9 +268,13 @@ def filter_prep_tokens(
 ) -> Tuple[List[str], List[float], List[float]]:
     # we need to filter out special tokens [CLS] and [SEP]
 
-    idxs = list(filter(lambda i: tokens[i] not in ["[CLS]", "[SEP]"], range(len(tokens))))
+    idxs = list(
+        filter(
+            lambda i: tokens[i] not in ["[CLS]", "[SEP]", "[PAD]"], range(len(tokens))
+        )
+    )
 
-    return np.array(tokens)[idxs], y_true[idxs], y_pred[idxs]
+    return np.array(tokens)[idxs], y_true[idxs].astype(np.float32), y_pred[idxs]
 
 
 # based on
@@ -280,56 +316,6 @@ def color_text_figure_binary(tokens, cmap, y_true, y_pred, threshold=0.5):
         bb = bb.transformed(transf)
         w = w + bb.xmax - bb.xmin + space
     return f
-
-
-# def get_mean_embedding(
-#     hidden_states: torch.Tensor, average_mask: torch.Tensor
-# ) -> torch.Tensor:
-#     """
-#     This function takes the hidden states and the mask, and averages over the
-#     sequence length to get the average embedding for the batch.
-
-#     Parameters
-#     ----------
-#     hidden_states : torch.Tensor
-#         The hidden states from the model. It is a tensor of shape
-#         [batch, seq_len, emb_dim]
-#     average_mask : torch.Tensor
-#         The mask for the tokens. It is a tensor of shape [batch, seq_len]
-
-#     Returns
-#     -------
-#     torch.Tensor
-#         The average embedding for the batch. It is a tensor of shape [batch, emb_dim]
-#     """
-#     # zero-out non mask tokens
-#     #                      [batch, seq_len, emb_dim] * [batch, seq_len, 1]
-#     masked_hidden_states = hidden_states * average_mask.unsqueeze(
-#         -1
-#     )  # [batch, seq_len, emb_dim]
-
-#     # sum over the sequence length
-#     masked_hidden_states_sum = masked_hidden_states.sum(dim=1)  # [batch, emb_dim]
-
-#     # count the number of tokens in the sequence
-#     masked_hidden_states_n = average_mask.sum(dim=1, keepdim=True)  # [batch, 1]
-
-#     # average over the sequence length
-#     masked_hidden_states_mean = (
-#         masked_hidden_states_sum / masked_hidden_states_n
-#     )  # [batch, emb_dim]
-
-#     return masked_hidden_states_mean.mean(axis=0, keepdim=True)  # [1, emb_dim]
-
-
-# def masked_average(
-#     mask:torch.Tensor, # [bs]
-#     embeddings:torch.Tensor, # [bs, emb_dim]
-# ) -> torch.Tensor: # [emb_dim]
-#     mask_float = mask.float() # [bs]
-#     masked_vals = mask_float.unsqueeze(-1) * embeddings # [bs, emb_dim]
-#     n = mask_float.sum() # [1]
-#     return masked_vals.sum(dim=0, keepdim=True) / n # [1, emb_dim]
 
 
 def masked_mean(
@@ -466,7 +452,7 @@ class GenericModel1(bm.Model):
                     collator,
                     config.get("n_query", 1),
                     config.get("tokenizer_call_kwargs", {}),
-                    batch
+                    batch,
                 )
 
                 send_to_device = lambda d: {k: v.to(device) for k, v in d.items()}
@@ -675,7 +661,7 @@ class GenericModel1(bm.Model):
                 # this will be 0 where the tokenizer set -100
                 # we don't want to penalize the loss for special tokens indicated
                 # by -100
-                mask_special =  1 - query_labels["special_token_indicator"][0, :]
+                mask_special = 1 - query_labels["special_token_indicator"][0, :]
 
                 masked_model_outputs = (
                     query_labels["mask_token_indicator"] * mask_special
@@ -704,10 +690,18 @@ class GenericModel1(bm.Model):
                 optimizer.step()
                 scheduler.step()
                 metric_scheduler.step()
-                step+=1
+                step += 1
 
                 if step % config.get("steps_per_eval", 50) == 0:
                     persample_detached = loss_t_per_sample.detach().cpu().numpy()
+
+                    if config.get("save_model", False):
+                        save_path = os.path.join(
+                            config["model_path"],
+                            training_logger.get_key(),
+                        )
+                        model.save_pretrained(save_path)
+                        tokenizer.save_pretrained(save_path)
 
                     with training_logger.train():
                         if persample_detached.shape[0] > 1:
@@ -717,8 +711,8 @@ class GenericModel1(bm.Model):
                             (
                                 best_tokens,
                                 best_y_true,
-                                best_y_pred
-                            )= filter_prep_tokens(
+                                best_y_pred,
+                            ) = filter_prep_tokens(
                                 tokenizer.convert_ids_to_tokens(
                                     batch_query["input_ids"][best_sample]
                                     .detach()
@@ -729,7 +723,9 @@ class GenericModel1(bm.Model):
                                 .detach()
                                 .cpu()
                                 .numpy(),
-                                torch.nn.functional.sigmoid(masked_model_outputs[best_sample])
+                                torch.nn.functional.sigmoid(
+                                    cos_sim_mask_query[best_sample]
+                                )
                                 .detach()
                                 .cpu()
                                 .numpy(),
@@ -744,12 +740,11 @@ class GenericModel1(bm.Model):
                             )
                             training_logger.log_figure("Best Query", best_f, step=step)
 
-
                             (
                                 worst_tokens,
                                 worst_y_true,
-                                worst_y_pred
-                            )= filter_prep_tokens(
+                                worst_y_pred,
+                            ) = filter_prep_tokens(
                                 tokenizer.convert_ids_to_tokens(
                                     batch_query["input_ids"][worst_sample]
                                     .detach()
@@ -760,12 +755,13 @@ class GenericModel1(bm.Model):
                                 .detach()
                                 .cpu()
                                 .numpy(),
-                                torch.nn.functional.sigmoid(masked_model_outputs[worst_sample])
+                                torch.nn.functional.sigmoid(
+                                    cos_sim_mask_query[worst_sample]
+                                )
                                 .detach()
                                 .cpu()
                                 .numpy(),
                             )
-
 
                             worst_f = color_text_figure_binary(
                                 worst_tokens,
@@ -780,27 +776,19 @@ class GenericModel1(bm.Model):
 
                         else:
 
-                            (
-                                tokens,
-                                y_true,
-                                y_pred
-                            )= filter_prep_tokens(
+                            (tokens, y_true, y_pred) = filter_prep_tokens(
                                 tokenizer.convert_ids_to_tokens(
-                                    batch_query["input_ids"][0]
-                                    .detach()
-                                    .cpu()
-                                    .numpy()
+                                    batch_query["input_ids"][0].detach().cpu().numpy()
                                 ),
                                 query_labels["mask_token_indicator"][0]
                                 .detach()
                                 .cpu()
                                 .numpy(),
-                                torch.nn.functional.sigmoid(masked_model_outputs[0])
+                                torch.nn.functional.sigmoid(cos_sim_mask_query[0])
                                 .detach()
                                 .cpu()
                                 .numpy(),
                             )
-
 
                             f = color_text_figure_binary(
                                 tokens,
@@ -833,7 +821,7 @@ class GenericModel1(bm.Model):
                     ng.__enter__()
                     for i, test_batch in enumerate(
                         tqdm(
-                            repository.get_test_data(
+                            repository.get_validation_data(
                                 batch_size=config["batch_size"],
                             ),
                             desc=f"Testing Epoch {epoch}",
@@ -847,9 +835,10 @@ class GenericModel1(bm.Model):
                         ) = prepare_batch(
                             tokenizer,
                             collator,
-                            config.get("n_query", 1),
+                            # config.get("n_query", 1),
+                            2,
                             config.get("tokenizer_call_kwargs", {}),
-                            test_batch
+                            test_batch,
                         )
 
                         batch_query = send_to_device(batch_query)
@@ -1000,16 +989,21 @@ class GenericModel1(bm.Model):
                         cos_sim_mask_query = cos_sim_mask_query * 10  # [bq, seq_len]
 
                         mask_special = (
-                            1 - (query_labels["mask_token_indicator"][0, :] == -100).float()
+                            1
+                            - (
+                                query_labels["mask_token_indicator"][0, :] == -100
+                            ).float()
                         )
                         masked_model_outputs = (
                             query_labels["mask_token_indicator"] * mask_special
                         )
-                        loss_t_batch = torch.nn.functional.binary_cross_entropy_with_logits(
-                            cos_sim_mask_query,
-                            masked_model_outputs,
-                            weight=batch_query["attention_mask"],
-                            reduction="none",
+                        loss_t_batch = (
+                            torch.nn.functional.binary_cross_entropy_with_logits(
+                                cos_sim_mask_query,
+                                masked_model_outputs,
+                                weight=batch_query["attention_mask"],
+                                reduction="none",
+                            )
                         )  # [bq, seq_len]
 
                         loss_t_per_sample = loss_t_batch.sum(dim=-1) / batch_query[
@@ -1023,8 +1017,13 @@ class GenericModel1(bm.Model):
                         total_loss += loss_t.detach().cpu().numpy()
                         total_metric_loss += loss_m.detach().cpu().numpy()
                         total_n += len(batch_query["input_ids"])
-                        total_metric_loss_n += len(class_1_samples) + len(class_0_samples)
+                        total_metric_loss_n += len(class_1_samples) + len(
+                            class_0_samples
+                        )
                         if i == config.get("test_eval_batches", 10):
+                            persample_detached = (
+                                loss_t_per_sample.detach().cpu().numpy()
+                            )
                             with training_logger.test():
                                 training_logger.log_metric(
                                     "loss",
@@ -1034,81 +1033,159 @@ class GenericModel1(bm.Model):
 
                                 training_logger.log_metric(
                                     "metric_loss",
-                                        total_metric_loss / total_metric_loss_n,
-                                        step=step,
-                                    )
+                                    total_metric_loss / total_metric_loss_n,
+                                    step=step,
+                                )
 
-                                (
-                                    tokens,
-                                    y_true,
-                                    y_pred
-                                )= filter_prep_tokens(
-                                    tokenizer.convert_ids_to_tokens(
-                                        batch_query["input_ids"][0]
+                                if persample_detached.shape[0] > 1:
+                                    best_sample = np.argmin(persample_detached)
+                                    worst_sample = np.argmax(persample_detached)
+
+                                    (
+                                        best_tokens,
+                                        best_y_true,
+                                        best_y_pred,
+                                    ) = filter_prep_tokens(
+                                        tokenizer.convert_ids_to_tokens(
+                                            batch_query["input_ids"][best_sample]
+                                            .detach()
+                                            .cpu()
+                                            .numpy()
+                                        ),
+                                        query_labels["mask_token_indicator"][
+                                            best_sample
+                                        ]
                                         .detach()
                                         .cpu()
-                                        .numpy()
-                                    ),
-                                    query_labels["mask_token_indicator"][0]
-                                    .detach()
-                                    .cpu()
-                                    .numpy(),
-                                    torch.nn.functional.sigmoid(masked_model_outputs[0])
-                                    .detach()
-                                    .cpu()
-                                    .numpy(),
-                                )
+                                        .numpy(),
+                                        torch.nn.functional.sigmoid(
+                                            cos_sim_mask_query[best_sample]
+                                        )
+                                        .detach()
+                                        .cpu()
+                                        .numpy(),
+                                    )
 
+                                    best_f = color_text_figure_binary(
+                                        best_tokens,
+                                        GenericModel1.blk_grn,
+                                        best_y_true,
+                                        best_y_pred,
+                                        threshold=0.5,
+                                    )
+                                    training_logger.log_figure(
+                                        "Best Query", best_f, step=step
+                                    )
 
-                                f = color_text_figure_binary(
-                                    tokens,
-                                    GenericModel1.blk_grn,
-                                    y_true,
-                                    y_pred,
-                                    threshold=0.5,
-                                )
-                                training_logger.log_figure("Query", f, step=step)
+                                    (
+                                        worst_tokens,
+                                        worst_y_true,
+                                        worst_y_pred,
+                                    ) = filter_prep_tokens(
+                                        tokenizer.convert_ids_to_tokens(
+                                            batch_query["input_ids"][worst_sample]
+                                            .detach()
+                                            .cpu()
+                                            .numpy()
+                                        ),
+                                        query_labels["mask_token_indicator"][
+                                            worst_sample
+                                        ]
+                                        .detach()
+                                        .cpu()
+                                        .numpy(),
+                                        torch.nn.functional.sigmoid(
+                                            cos_sim_mask_query[worst_sample]
+                                        )
+                                        .detach()
+                                        .cpu()
+                                        .numpy(),
+                                    )
 
+                                    worst_f = color_text_figure_binary(
+                                        worst_tokens,
+                                        GenericModel1.blk_grn,
+                                        worst_y_true,
+                                        worst_y_pred,
+                                        threshold=0.5,
+                                    )
+                                    training_logger.log_figure(
+                                        "Worst Query", worst_f, step=step
+                                    )
 
+                                else:
 
+                                    (tokens, y_true, y_pred) = filter_prep_tokens(
+                                        tokenizer.convert_ids_to_tokens(
+                                            batch_query["input_ids"][0]
+                                            .detach()
+                                            .cpu()
+                                            .numpy()
+                                        ),
+                                        query_labels["mask_token_indicator"][0]
+                                        .detach()
+                                        .cpu()
+                                        .numpy(),
+                                        torch.nn.functional.sigmoid(
+                                            cos_sim_mask_query[0]
+                                        )
+                                        .detach()
+                                        .cpu()
+                                        .numpy(),
+                                    )
+
+                                    f = color_text_figure_binary(
+                                        tokens,
+                                        GenericModel1.blk_grn,
+                                        y_true,
+                                        y_pred,
+                                        threshold=0.5,
+                                    )
+                                    training_logger.log_figure("Query", f, step=step)
 
                             break
 
                     ng.__exit__(None, None, None)
 
+                # the balanced version of the dataset is quite large so offer
+                # the option to get out of the epoch early
+                if step >= config.get("steps_per_epoch", np.inf):
+                    break
 
 
 if __name__ == "__main__":
-    # bm.train = train
-    # bm.validate = validate
-    # bm.main()
+    bm.train = train
+    bm.validate = validate
+    bm.main()
 
-    from src.data.repository_resolver import resolve_repo
+    # from src.data.repository_resolver import resolve_repo
 
-    repository = resolve_repo("snippet-masked_lm")
-    config = dict(
-        model_tokenizer_name="allenai/scibert_scivocab_cased",
-        tokenizer_kwargs={},
-        tokenizer_call_kwargs=dict(max_length=512, truncation=True, is_split_into_words=True),
-        model_kwargs={},
-        optimizer="torch.optim.AdamW",
-        optimizer_kwargs=dict(lr=1e-5),
-        metric_optimizer="torch.optim.SGD",
-        metric_optimizer_kwargs=dict(lr=1e-2),
-        batch_size=8,
-        epochs=1,
-        steps_per_eval=10,
-        balance_labels=True,
-    )
+    # repository = resolve_repo("snippet-masked_lm")
+    # config = dict(
+    #     model_tokenizer_name="allenai/scibert_scivocab_cased",
+    #     tokenizer_kwargs={},
+    #     tokenizer_call_kwargs=dict(max_length=512, truncation=True, is_split_into_words=True),
+    #     model_kwargs={},
+    #     optimizer="torch.optim.AdamW",
+    #     optimizer_kwargs=dict(lr=1e-5),
+    #     metric_optimizer="torch.optim.SGD",
+    #     metric_optimizer_kwargs=dict(lr=1e-2),
+    #     batch_size=8,
+    #     epochs=1,
+    #     steps_per_eval=10,
+    #     balance_labels=True,
+    #     n_query=2,
+    #     save_model=True,
+    # )
 
-    from comet_ml import Experiment
+    # from comet_ml import Experiment
 
-    training_logger = Experiment(
-        workspace="democratizingdata",
-        project_name="generic-model1",
-        auto_metric_logging=False,
-        disabled=False,
-    )
+    # training_logger = Experiment(
+    #     workspace="democratizingdata",
+    #     project_name="generic-model1",
+    #     auto_metric_logging=False,
+    #     disabled=False,
+    # )
 
-    model = GenericModel1()
-    model.train(repository, config, training_logger)
+    # model = GenericModel1()
+    # model.train(repository, config, training_logger)

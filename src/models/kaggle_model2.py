@@ -104,12 +104,14 @@ def batcher(iterable, batch_size):
         yield batch
 
 
-
 class KaggleModel2(bm.Model):
+    def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
-    def inference(self, config: Dict[str, Any], df:pd.DataFrame) -> pd.DataFrame:
-
-        df = config["extractor"].inference(config["extractor_config"], df).rename(columns={"model_prediction": "entities"})
+        df = (
+            config["extractor"]
+            .inference(config["extractor_config"], df)
+            .rename(columns={"model_prediction": "entities"})
+        )
 
         # Load the model
         pretrained_config = AutoConfig.from_pretrained(
@@ -146,27 +148,27 @@ class KaggleModel2(bm.Model):
                     add_special_tokens=True,
                     return_tensors="pt",
                 )
-                model_outputs = model(
-                    **batch_features, return_dict=True
+                model_outputs = model(**batch_features, return_dict=True)
+                classifications = (
+                    torch.softmax(model_outputs.logits, -1).detach().cpu().numpy()
                 )
-                classifications = torch.softmax(model_outputs.logits, -1).detach().cpu().numpy()
 
-                filtered_entities.extend(list(map(
-                    lambda ent_cls: ent_cls[0],
-                    filter(
-                        lambda ent_cls: ent_cls[1][1] > config["min_prob"],
-                        zip(batch, classifications)
+                filtered_entities.extend(
+                    list(
+                        map(
+                            lambda ent_cls: ent_cls[0],
+                            filter(
+                                lambda ent_cls: ent_cls[1][1] > config["min_prob"],
+                                zip(batch, classifications),
+                            ),
+                        )
                     )
-                )))
+                )
             return "|".join(filtered_entities)
-
-
-
 
         df["model_prediction"] = df["entities"].apply(infer_sample)
 
         return df
-
 
     def train(self, repository: Repository, config: Dict[str, Any], training_logger: bm.SupportsLogging) -> None:  # type: ignore[override]
         pretrained_config = AutoConfig.from_pretrained(
@@ -185,7 +187,9 @@ class KaggleModel2(bm.Model):
         tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
 
         opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
-        scheduler = torch.optim.lr_scheduler.MultiplicativeLR(opt, lr_lambda=lambda e:0.95)
+        scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
+            opt, lr_lambda=lambda e: 0.95
+        )
         # get all samples
         train_samples = repository.get_training_data(
             config.get("balance_labels", False)
@@ -194,9 +198,18 @@ class KaggleModel2(bm.Model):
 
         config["step"] = 0
         for epoch in trange(config["num_epochs"]):
-            config["step"]  = self._train_epoch(config, model, tokenizer, train_samples, opt, training_logger, epoch, test_samples)
+            config["step"] = self._train_epoch(
+                config,
+                model,
+                tokenizer,
+                train_samples,
+                opt,
+                training_logger,
+                epoch,
+                test_samples,
+            )
 
-            #self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
+            # self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
             scheduler.step()
             if config["save_model"]:
                 save_path = os.path.join(
@@ -206,14 +219,23 @@ class KaggleModel2(bm.Model):
                 model.save_pretrained(save_path)
                 tokenizer.save_pretrained(save_path)
 
-    def _train_epoch(self, config, model, tokenizer, samples, opt, training_logger, curr_epoch, test_samples) -> None:
+    def _train_epoch(
+        self,
+        config,
+        model,
+        tokenizer,
+        samples,
+        opt,
+        training_logger,
+        curr_epoch,
+        test_samples,
+    ) -> None:
         all_strings, all_labels = samples["entity"].values, samples["label"].values
         train_indices = list(range(len(all_labels)))
         shuffle(train_indices)
         train_strings = all_strings[train_indices]
         train_labels = all_labels[train_indices]
 
-        
         iter = 0
         accum_for = config["accum_for"]
         running_total_loss = 0  # Display running average of loss across epoch
@@ -270,8 +292,7 @@ class KaggleModel2(bm.Model):
                 if iter % accum_for == 0:
                     opt.step()
                     opt.zero_grad()
-                    
-                    
+
                 if iter % 10 == 0:
                     with training_logger.train():
                         training_logger.log_metric(
@@ -296,15 +317,16 @@ class KaggleModel2(bm.Model):
                             matches[~y_true].mean(),
                             step=config["step"],
                         )
-                    
 
-                    test_strings, test_labels = test_samples["entity"].values, test_samples["label"].values
+                    test_strings, test_labels = (
+                        test_samples["entity"].values,
+                        test_samples["label"].values,
+                    )
 
                     model.eval()
                     iter = 0
                     running_total_loss = 0
                     test_preds = []
-
 
                     with trange(
                         0,
@@ -315,10 +337,13 @@ class KaggleModel2(bm.Model):
                         for batch_idx_start in t:
                             iter += 1
                             batch_idx_end = min(
-                                batch_idx_start + config["batch_size"], len(test_strings)
+                                batch_idx_start + config["batch_size"],
+                                len(test_strings),
                             )
 
-                            current_batch = list(test_strings[batch_idx_start:batch_idx_end])
+                            current_batch = list(
+                                test_strings[batch_idx_start:batch_idx_end]
+                            )
                             batch_features = tokenizer(
                                 current_batch,
                                 truncation=True,
@@ -327,24 +352,30 @@ class KaggleModel2(bm.Model):
                                 add_special_tokens=True,
                                 return_tensors="pt",
                             )
-                            batch_labels = torch.tensor(test_labels[batch_idx_start:batch_idx_end])
+                            batch_labels = torch.tensor(
+                                test_labels[batch_idx_start:batch_idx_end]
+                            )
 
                             if torch.cuda.is_available():
                                 # the .long() call is from the original code, but I am not
                                 # sure why it is needed. I am not an avid pytorch user.
                                 batch_labels = batch_labels.long().cuda()
-                                batch_features = {k: v.cuda() for k, v in batch_features.items()}
+                                batch_features = {
+                                    k: v.cuda() for k, v in batch_features.items()
+                                }
 
                             model_outputs = model(
                                 **batch_features, labels=batch_labels, return_dict=True
                             )
                             loss = model_outputs["loss"]
-                            loss = loss / config["accum_for"]  # Normalize if we're doing GA
+                            loss = (
+                                loss / config["accum_for"]
+                            )  # Normalize if we're doing GA
 
                             test_preds.append(
-                                    softmax(
-                                        model_outputs["logits"].detach().cpu().numpy(),
-                                        axis=1
+                                softmax(
+                                    model_outputs["logits"].detach().cpu().numpy(),
+                                    axis=1,
                                 )
                             )
 
@@ -353,7 +384,7 @@ class KaggleModel2(bm.Model):
                             else:
                                 running_total_loss += loss.detach().numpy()
 
-                            t.set_postfix(loss=running_total_loss / iter)   
+                            t.set_postfix(loss=running_total_loss / iter)
 
                     test_preds = np.concatenate(test_preds, axis=0)
                     test_preds_labels = np.argmax(test_preds, axis=1)
@@ -381,8 +412,10 @@ class KaggleModel2(bm.Model):
                         training_logger.log_confusion_matrix(
                             y_true=test_labels,
                             y_predicted=test_preds_labels,
-                            labels=['negative', 'positive'],
-                            index_to_example_function = lambda idx: test_strings[idx] + " " + str(test_preds[idx, test_preds_labels[idx]]),
+                            labels=["negative", "positive"],
+                            index_to_example_function=lambda idx: test_strings[idx]
+                            + " "
+                            + str(test_preds[idx, test_preds_labels[idx]]),
                             step=config["step"],
                             title="Test Set Confusion Matrix",
                         )

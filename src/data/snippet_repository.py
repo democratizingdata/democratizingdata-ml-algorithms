@@ -429,8 +429,12 @@ class SnippetRepository(Repository):
     def get_validation_data(
         self, batch_size: Optional[int] = None
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        transform_f = partial(self.transform_df, True)
+        aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
+        transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
+
         return self.get_iter_or_df(
-            self.validation_dataframe, partial(self.transform_df, True), batch_size
+            self.validation_dataframe, transform_aggregate_f, batch_size
         )
 
     @staticmethod
