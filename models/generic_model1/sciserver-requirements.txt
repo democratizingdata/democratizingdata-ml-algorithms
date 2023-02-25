@@ -3,6 +3,7 @@ comet_ml
 datasets
 imbalanced-learn
 matplotlib
+mlflow
 numpy
 pandas
 pandarallel
