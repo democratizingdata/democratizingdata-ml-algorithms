@@ -4,14 +4,9 @@ datasets
 imbalanced-learn
 matplotlib
 mlflow
-numpy
-pandas
 pandarallel
 pytorch_metric_learning
 regex
-scikit-learn
 spacy
-torch
 transformers
-tqdm
 unidecode
