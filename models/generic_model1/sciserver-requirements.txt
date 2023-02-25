@@ -8,5 +8,6 @@ pandarallel
 pytorch_metric_learning
 regex
 spacy
+thefuzz
 transformers
 unidecode
