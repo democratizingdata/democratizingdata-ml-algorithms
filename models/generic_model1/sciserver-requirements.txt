@@ -1,0 +1,16 @@
+click
+comet_ml
+datasets
+imbalanced-learn
+matplotlib
+numpy
+pandas
+pandarallel
+pytorch_metric_learning
+regex
+scikit-learn
+spacy
+torch
+transformers
+tqdm
+unidecode
