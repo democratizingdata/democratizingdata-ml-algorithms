@@ -1,6 +1,6 @@
 # This is a token classification model trained with two loss functions:
 # 1. Cross entropy loss for the dataset tokens
-# 2. Some other loss for comparing embeddings of the context tokens
+# 2. Arcface for comparing embeddings of the context tokens
 #
 # See https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/main/1st%20ZALO%20FTW/MODEL_SUMMARY.pdf
 # for more details.
@@ -405,7 +405,32 @@ class GenericModel1(bm.Model):
             return model, tokenizer, collator
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
-        return super().inference(config, df)
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        mask_embedding = self.get_support_data(config)
+
+        model, tokenizer, collator = self.get_model_objects(config, include_optimizer=False)
+
+        model.eval()
+        ng = torch.no_grad()
+        ng.__enter__()
+
+        def infer_sample(text:str) -> str:
+            # text is a document
+            pass
+
+
+
+        if config.get("inference_progress_bar", False):
+            tqdm.pandas()
+            df["model_prediction"] = df["text"].progress_apply(infer_sample)
+        else:
+            df["model_prediction"] = df["text"].apply(infer_sample)
+
+        ng.__exit__(None, None, None)
+
+        return df
 
     def train(
         self,
