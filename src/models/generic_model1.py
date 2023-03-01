@@ -64,7 +64,7 @@ def train(
         param_dict: Dict[str, Any],
         key: str
     ) -> None:
-        for k, v in config[k].items():
+        for k, v in config[key].items():
             param_dict[key + ":" + k] = v
 
     logging_dict = {
