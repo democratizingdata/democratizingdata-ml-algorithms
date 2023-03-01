@@ -59,16 +59,16 @@ def train(
 ) -> None:
     validate_config(config)
 
-    training_logger.log_parameters(
-        {
-            "model_tokenizer_name": config["model_tokenizer_name"],
-            "optimizer": config["optimizer"],
-        }
-        | config["tokenizer_call_kwargs"]
-        | config["tokenizer_kwargs"]
-        | config["model_kwargs"]
-        | config["optimizer_kwargs"]
-    )
+    logging_dict = {
+        "model_tokenizer_name": config["model_tokenizer_name"],
+        "optimizer": config["optimizer"],
+    }
+    logging_dict.update(config["tokenizer_call_kwargs"])
+    logging_dict.update(config["tokenizer_kwargs"])
+    logging_dict.update(config["model_kwargs"])
+    logging_dict.update(config["optimizer_kwargs"])
+
+    training_logger.log_parameters(logging_dict)
 
     model = GenericModel1()
     model.train(repository, config, training_logger)
