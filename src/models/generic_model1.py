@@ -411,19 +411,19 @@ class GenericModel1(bm.Model):
     def sentencize_text(self, text: str) -> List[str]:
         max_tokens = 10_000
 
-        
+
         tokens = text.split()
         if len(tokens) > max_tokens:
             texts = [
                 " ".join(tokens[i : i + max_tokens])
                 for i in range(0, len(tokens), max_tokens)
             ]
-            tokens = tokens[:max_tokens]        
+            tokens = tokens[:max_tokens]
         else:
             texts = [text]
 
         process_generator = self.nlp.pipe(
-            texts, 
+            texts,
             disable=["lemmatizer", "ner", "textcat"],
         )
 
@@ -436,7 +436,7 @@ class GenericModel1(bm.Model):
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                                                       # [batch, token, embed_dim] 
+                                                       # [batch, token, embed_dim]
         mask_embedding = self.get_support_data(config) # [1,     1,     embed_dim]
 
         model, tokenizer, collator = self.get_model_objects(config, include_optimizer=False)
@@ -447,12 +447,17 @@ class GenericModel1(bm.Model):
 
         masked_embedding = torch.from_numpy(mask_embedding).to(device)
         def infer_sample(text:str) -> str:
-            sents = self.sentencize_text(text) # list[str]
+            sents = self.sentencize_text(text) # List[List[str]]
             assert len(sents) > 0, "No sentences found in text"
-            
+
             datasets = []
             for batch in spacy.util.minibatch(sents, config["batch_size"]):
-                batch = tokenizer(batch, return_tensors="pt", padding=True)
+                batch = tokenizer(
+                    batch,
+                    return_tensors="pt",
+                    padding=True,
+                    **config.get("tokenizer_kwargs", {}),
+                )
                 batch = batch.to(device)
                 outputs = model(**batch)
                 output_embedding = outputs.last_hidden_state # [batch, token, embed_dim]
@@ -461,6 +466,9 @@ class GenericModel1(bm.Model):
                 ) # [batch, token]
                 token_classification = torch.nn.functional.sigmoid(cos_sim * 10) # [batch, token]
                 token_classification = token_classification.cpu().numpy()
+
+
+
 
                 # filter classifications by min confidence
                 # aggregate restore classifications to original text
@@ -627,7 +635,7 @@ class GenericModel1(bm.Model):
                 # the positive tokens from the query set. Both of these
                 # embeddings are from the same class, they represent dataset
                 # tokens.
-                class_1_embedding = torch.concat(
+                class_1_embedding = torch.cat(
                     [mask_embedding, label_embedding], dim=0
                 ).mean(
                     dim=0, keepdim=True
@@ -636,7 +644,7 @@ class GenericModel1(bm.Model):
                 # We want to group the non-masked tokens from the support set
                 # with the negative tokens from the query set. Both of these
                 # embeddings represent non-dataset tokens.
-                class_0_embedding = torch.concat(
+                class_0_embedding = torch.cat(
                     [non_mask_embedding, non_label_embedding], dim=0
                 ).mean(
                     dim=0, keepdim=True
@@ -666,28 +674,28 @@ class GenericModel1(bm.Model):
                     axis=0,  # average over batch size
                 )  # [1, emb_dim]
 
-                class_1_cls_embedding = torch.concat(
+                class_1_cls_embedding = torch.cat(
                     [class_1_cls_support_embedding, class_1_cls_query_embedding], dim=0
                 ).mean(
                     dim=0, keepdim=True
                 )  # [1, emb_dim]
 
-                class_0_cls_embedding = torch.concat(
+                class_0_cls_embedding = torch.cat(
                     [class_0_cls_support_embedding, class_0_cls_query_embedding], dim=0
                 ).mean(
                     dim=0, keepdim=True
                 )  # [1, emb_dim]
 
-                class_1_samples = torch.concat(
+                class_1_samples = torch.cat(
                     [class_1_embedding, class_1_cls_embedding], dim=0
                 )  # [2, emb_dim]
 
-                class_0_samples = torch.concat(
+                class_0_samples = torch.cat(
                     [class_0_embedding, class_0_cls_embedding], dim=0
                 )  # [2, emb_dim]
 
                 # labels need to be long type
-                metric_labels = torch.concat(
+                metric_labels = torch.cat(
                     [
                         torch.ones(len(class_1_samples), dtype=torch.long),
                         torch.zeros(len(class_0_samples), dtype=torch.long),
@@ -697,7 +705,7 @@ class GenericModel1(bm.Model):
 
                 # This is our metric based loss
                 loss_m = metric_loss(
-                    torch.concat([class_1_samples, class_0_samples], dim=0),
+                    torch.cat([class_1_samples, class_0_samples], dim=0),
                     metric_labels,
                 )
 
@@ -978,13 +986,13 @@ class GenericModel1(bm.Model):
                             keepdim=False,
                         )  # [bq, emb_dim]
 
-                        class_1_embedding = torch.concat(
+                        class_1_embedding = torch.cat(
                             [mask_embedding, label_embedding], dim=0
                         ).mean(
                             dim=0, keepdim=True
                         )  # [1, emb_dim]
 
-                        class_0_embedding = torch.concat(
+                        class_0_embedding = torch.cat(
                             [non_mask_embedding, non_label_embedding], dim=0
                         ).mean(
                             dim=0, keepdim=True
@@ -1014,7 +1022,7 @@ class GenericModel1(bm.Model):
                             axis=0,  # average over batch size
                         )  # [1, emb_dim]
 
-                        class_1_cls_embedding = torch.concat(
+                        class_1_cls_embedding = torch.cat(
                             [
                                 class_1_cls_support_embedding,
                                 class_1_cls_query_embedding,
@@ -1024,7 +1032,7 @@ class GenericModel1(bm.Model):
                             dim=0, keepdim=True
                         )  # [1, emb_dim]
 
-                        class_0_cls_embedding = torch.concat(
+                        class_0_cls_embedding = torch.cat(
                             [
                                 class_0_cls_support_embedding,
                                 class_0_cls_query_embedding,
@@ -1034,15 +1042,15 @@ class GenericModel1(bm.Model):
                             dim=0, keepdim=True
                         )  # [1, emb_dim]
 
-                        class_1_samples = torch.concat(
+                        class_1_samples = torch.cat(
                             [class_1_embedding, class_1_cls_embedding], dim=0
                         )  # [2, emb_dim]
 
-                        class_0_samples = torch.concat(
+                        class_0_samples = torch.cat(
                             [class_0_embedding, class_0_cls_embedding], dim=0
                         )  # [2, emb_dim]
 
-                        metric_labels = torch.concat(
+                        metric_labels = torch.cat(
                             [
                                 torch.ones(len(class_1_samples), dtype=torch.long),
                                 torch.zeros(len(class_0_samples), dtype=torch.long),
@@ -1051,7 +1059,7 @@ class GenericModel1(bm.Model):
                         )  # [4]
 
                         loss_m = metric_loss(
-                            torch.concat([class_1_samples, class_0_samples], dim=0),
+                            torch.cat([class_1_samples, class_0_samples], dim=0),
                             metric_labels,
                         )
 
