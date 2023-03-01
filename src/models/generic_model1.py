@@ -7,7 +7,7 @@
 
 
 from functools import partial
-from itertools import islice, starmap
+from itertools import filterfalse, islice, starmap
 import logging
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -342,6 +342,42 @@ def masked_mean(
 
     return masked_arr.sum(axis=axis, keepdim=keepdim) / n
 
+def merge_tokens_w_classifications(
+    tokens:List[str],
+    classifications:List[float]
+) -> List[Tuple[str, float]]:
+    merged = []
+    for token, classification in zip(tokens, classifications):
+        if token.startswith("##"):
+            merged[-1] = (merged[-1][0] + token[2:], merged[-1][1])
+        else:
+            merged.append((token, classification))
+    return merged
+
+
+def is_special_token(token):
+    return token.startswith("[") and token.endswith("]")
+
+
+
+def high_probablity_token_groups(
+    tokens_classifications: List[Tuple[str, float]],
+    threshold:float=0.9,
+) -> List[List[Tuple[str, float]]]:
+
+    datasets = []
+    dataset = []
+    for token, score in tokens_classifications:
+        if score >= threshold:
+            dataset.append((token, score))
+        else:
+            if len(dataset) > 0:
+                datasets.append(dataset)
+                dataset = []
+    if len(dataset) > 0:
+        datasets.append(dataset)
+
+    return datasets
 
 class GenericModel1(bm.Model):
     blk_grn = mcolors.LinearSegmentedColormap.from_list(
@@ -370,8 +406,8 @@ class GenericModel1(bm.Model):
             config["model_tokenizer_name"], **config.get("model_kwargs", {})
         )
 
-        if torch.cuda.is_available():
-            model = model.cuda()
+        # if torch.cuda.is_available():
+        #     model = model.cuda()
 
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
@@ -440,13 +476,33 @@ class GenericModel1(bm.Model):
 
         return sents
 
+    def get_support_mask_embed(self, config: Dict[str, Any]) -> np.ndarray:
+
+        suport_mask_tokens = np.load(config["support_token_path"]) #[n, embed_dim]
+
+        n_samples = config.get("n_support_samples", 20)
+        sample_idxs = np.random.choice(
+            np.arange(suport_mask_tokens.shape[0]),
+            n_samples
+        )
+
+        support_mask_embed = np.mean(
+            suport_mask_tokens[sample_idxs, :], # [n, embed_dim]
+            axis=0,
+            keepdims=True,
+        )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
+
+
+
+        return support_mask_embed
+
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                                                       # [batch, token, embed_dim]
-        mask_embedding = self.get_support_data(config) # [1,     1,     embed_dim]
+        device = "cpu" # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                                                             # [batch, token, embed_dim]
+        mask_embedding = self.get_support_mask_embed(config) # [1,     1,     embed_dim]
 
-        model, tokenizer, collator = self.get_model_objects(config, include_optimizer=False)
+        model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
 
         model.eval()
         ng = torch.no_grad()
@@ -463,8 +519,9 @@ class GenericModel1(bm.Model):
                     batch,
                     return_tensors="pt",
                     padding=True,
-                    **config.get("tokenizer_kwargs", {}),
+                    **config.get("tokenizer_call_kwargs", {}),
                 )
+
                 batch = batch.to(device)
                 outputs = model(**batch)
                 output_embedding = outputs.last_hidden_state # [batch, token, embed_dim]
@@ -472,19 +529,37 @@ class GenericModel1(bm.Model):
                     output_embedding, masked_embedding, dim=-1
                 ) # [batch, token]
                 token_classification = torch.nn.functional.sigmoid(cos_sim * 10) # [batch, token]
-                token_classification = token_classification.cpu().numpy()
 
+                token_classification = token_classification.cpu().numpy() # [batch, token]
+                tokens = list(map(
+                    tokenizer.convert_ids_to_tokens,
+                    batch["input_ids"].cpu().numpy()
+                )) # [batch, token]
 
+                for sent, sent_classification in zip(
+                    tokens,
+                    token_classification
+                ):
+                    assert len(sent) == len(sent_classification), "Classification length mismatch"
+                    tokens_classifications = list(filterfalse(
+                        lambda x: is_special_token(x[0]),
+                        merge_tokens_w_classifications(
+                            sent,
+                            sent_classification
+                        )
+                    ))
 
+                    detections = high_probablity_token_groups(
+                        tokens_classifications,
+                        threshold=config.get("threshold", 0.9)
+                    ) # List[List[Tuple[str, float]]]
 
-                # filter classifications by min confidence
-                # aggregate restore classifications to original text
-                # add to datasets
+                    datasets.extend(detections)
 
-
-
-            pass
-
+            return "|".join(list(map(
+                lambda x: " ".join(map(lambda y: y[0], x)),
+                datasets
+            )))
 
 
         if config.get("inference_progress_bar", False):
