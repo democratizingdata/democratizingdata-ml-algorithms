@@ -20,6 +20,7 @@ import pandas as pd
 import torch
 import transformers as tfs
 from pytorch_metric_learning import losses as metric_losses
+import spacy
 from tqdm import tqdm
 
 from datasets.utils.logging import disable_progress_bar
@@ -341,6 +342,9 @@ class GenericModel1(bm.Model):
         ["black", "green"],
     )
 
+    def __init__(self,):
+        self.nlp = spacy.load("en_core_web_sm")
+
     def get_model_objects(
         self, config: Dict[str, Any], include_optimizer: bool
     ) -> None:
@@ -404,11 +408,36 @@ class GenericModel1(bm.Model):
         else:
             return model, tokenizer, collator
 
+    def sentencize_text(self, text: str) -> List[str]:
+        max_tokens = 10_000
+
+        
+        tokens = text.split()
+        if len(tokens) > max_tokens:
+            texts = [
+                " ".join(tokens[i : i + max_tokens])
+                for i in range(0, len(tokens), max_tokens)
+            ]
+            tokens = tokens[:max_tokens]        
+        else:
+            texts = [text]
+
+        process_generator = self.nlp.pipe(
+            texts, 
+            disable=["lemmatizer", "ner", "textcat"],
+        )
+
+        sents = []
+        for doc in process_generator:
+            sents.extend([sent.text for sent in doc.sents])
+
+        return sents
+
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        mask_embedding = self.get_support_data(config)
+                                                       # [batch, token, embed_dim] 
+        mask_embedding = self.get_support_data(config) # [1,     1,     embed_dim]
 
         model, tokenizer, collator = self.get_model_objects(config, include_optimizer=False)
 
@@ -416,8 +445,29 @@ class GenericModel1(bm.Model):
         ng = torch.no_grad()
         ng.__enter__()
 
+        masked_embedding = torch.from_numpy(mask_embedding).to(device)
         def infer_sample(text:str) -> str:
-            # text is a document
+            sents = self.sentencize_text(text) # list[str]
+            assert len(sents) > 0, "No sentences found in text"
+            
+            datasets = []
+            for batch in spacy.util.minibatch(sents, config["batch_size"]):
+                batch = tokenizer(batch, return_tensors="pt", padding=True)
+                batch = batch.to(device)
+                outputs = model(**batch)
+                output_embedding = outputs.last_hidden_state # [batch, token, embed_dim]
+                cos_sim = torch.nn.functional.cosine_similarity(
+                    output_embedding, masked_embedding, dim=-1
+                ) # [batch, token]
+                token_classification = torch.nn.functional.sigmoid(cos_sim * 10) # [batch, token]
+                token_classification = token_classification.cpu().numpy()
+
+                # filter classifications by min confidence
+                # aggregate restore classifications to original text
+                # add to datasets
+
+
+
             pass
 
 
