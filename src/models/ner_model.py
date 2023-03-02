@@ -111,13 +111,17 @@ def prepare_batch(
     tokenizer: tfs.tokenization_utils_base.PreTrainedTokenizerBase,
     data_collator: tfs.data.data_collator.DataCollatorMixin,
     lbl_to_id: Dict[str, int],
+    config: Dict[str, Any],
     batch: pd.DataFrame,
 ) -> Dict[str, torch.Tensor]:
 
     ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
     tokenize_f = partial(
         tokenize_and_align_labels,
-        partial(tokenizer, is_split_into_words=True, truncation=True),
+        partial(
+            tokenizer, 
+            **config.get("tokenizer_call_kwargs", {}),
+        ),
     )
 
     transformed_batch = (
@@ -302,7 +306,7 @@ class NERModel_pytorch(bm.Model):
         )
 
         # test_samples = repository.get_test_data(batch_size=config["batch_size"])
-
+        print(config.get("tokenizer_call_kwargs", {}))
         step = config.get("start_step", 0)
         for epoch in range(config["epochs"]):
             model.train()
@@ -314,7 +318,7 @@ class NERModel_pytorch(bm.Model):
                 desc=f"Training Epoch {epoch}",
             ):
                 batch = prepare_batch(
-                    tokenizer, collator, NERModel_pytorch.lbl_to_id, batch
+                    tokenizer, collator, NERModel_pytorch.lbl_to_id, config, batch
                 )
                 batch = {k: v.to(device) for k, v in batch.items()}
                 outputs = model(**batch)
@@ -393,8 +397,9 @@ class NERModel_pytorch(bm.Model):
                         )
                     ):
                         batch = prepare_batch(
-                            tokenizer, collator, NERModel_pytorch.lbl_to_id, batch
+                            tokenizer, collator, NERModel_pytorch.lbl_to_id, config, batch
                         )
+                        print(batch["input_ids"].shape)
                         batch = {k: v.to(device) for k, v in batch.items()}
                         outputs = model(**batch)
                         loss = outputs.loss
