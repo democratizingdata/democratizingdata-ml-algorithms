@@ -298,6 +298,7 @@ class NERModel_pytorch(bm.Model):
         )
 
         model.eval()
+        model.to(device)
         ng = torch.no_grad()
         ng.__enter__()
 
