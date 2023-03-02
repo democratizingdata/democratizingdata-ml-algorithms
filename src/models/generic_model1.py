@@ -497,7 +497,7 @@ class GenericModel1(bm.Model):
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
-        device = "cpu" # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                                                              # [batch, token, embed_dim]
         mask_embedding = self.get_support_mask_embed(
             config["support_mask_embedding_path"],
@@ -516,6 +516,7 @@ class GenericModel1(bm.Model):
         ng.__enter__()
 
         masked_embedding = torch.from_numpy(mask_embedding).to(device)
+        no_mask_embedding = torch.from_numpy(no_mask_embedding).to(device)
         def infer_sample(text:str) -> str:
             sents = self.sentencize_text(text) # List[List[str]]
             assert len(sents) > 0, "No sentences found in text"
