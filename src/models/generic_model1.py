@@ -476,31 +476,38 @@ class GenericModel1(bm.Model):
 
         return sents
 
-    def get_support_mask_embed(self, config: Dict[str, Any]) -> np.ndarray:
+    def get_support_mask_embed(self, path:str, n_samples:int) -> np.ndarray:
 
-        suport_mask_tokens = np.load(config["support_token_path"]) #[n, embed_dim]
+        support_tokens = np.load(path) #[n, embed_dim]
 
-        n_samples = config.get("n_support_samples", 20)
         sample_idxs = np.random.choice(
-            np.arange(suport_mask_tokens.shape[0]),
+            np.arange(support_tokens.shape[0]),
             n_samples
         )
 
-        support_mask_embed = np.mean(
-            suport_mask_tokens[sample_idxs, :], # [n, embed_dim]
+        support_tokens = np.mean(
+            support_tokens[sample_idxs, :], # [n, embed_dim]
             axis=0,
             keepdims=True,
         )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
 
 
 
-        return support_mask_embed
+        return support_tokens
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
         device = "cpu" # torch.device("cuda" if torch.cuda.is_available() else "cpu")
                                                              # [batch, token, embed_dim]
-        mask_embedding = self.get_support_mask_embed(config) # [1,     1,     embed_dim]
+        mask_embedding = self.get_support_mask_embed(
+            config["support_mask_embedding_path"],
+            config["n_support_samples"],
+        ) # [1,     1,     embed_dim]
+
+        no_mask_embedding = self.get_support_mask_embed(
+            config["support_no_mask_embedding_path"],
+            config["n_support_samples"],
+        ) # [1,     1,     embed_dim]
 
         model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
 
@@ -530,7 +537,19 @@ class GenericModel1(bm.Model):
                 ) # [batch, token]
                 token_classification = torch.nn.functional.sigmoid(cos_sim * 10) # [batch, token]
 
+                token_non_classification = 1 - torch.nn.functional.sigmoid(
+                    torch.nn.functional.cosine_similarity(
+                        output_embedding, no_mask_embedding, dim=-1
+                    ) *  10
+                ) # [batch, token]
+
+                # Not sure why they do this  ===================================
                 token_classification = token_classification.cpu().numpy() # [batch, token]
+                token_non_classification = token_non_classification.cpu().numpy() # [batch, token]
+                merged_classifications = 0.5 * (token_classification + (1.0 - token_non_classification))
+                # Not sure why they do this  ===================================
+
+
                 tokens = list(map(
                     tokenizer.convert_ids_to_tokens,
                     batch["input_ids"].cpu().numpy()
@@ -538,7 +557,7 @@ class GenericModel1(bm.Model):
 
                 for sent, sent_classification in zip(
                     tokens,
-                    token_classification
+                    merged_classifications
                 ):
                     assert len(sent) == len(sent_classification), "Classification length mismatch"
                     tokens_classifications = list(filterfalse(
