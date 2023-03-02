@@ -367,7 +367,7 @@ class NERModel_pytorch(bm.Model):
         ng.__exit__(None, None, None)
 
 
-        return super().inference(config, df)
+        return df
 
     def filter_by_idx(self, tokenizer, batch, outputs, idx):
         idx_mask = batch["input_ids"][idx] > 102
