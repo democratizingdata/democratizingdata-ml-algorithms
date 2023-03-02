@@ -105,7 +105,10 @@ def calculate_statistics(
                               - "stats" -> containing "TP", "FP" or "FN" for
                                 each label in "labels".
     """
-    predictions = list(set(row["model_prediction"].strip().split("|")))
+    predictions = list(set(filter(
+        lambda x: len(x) > 0,
+        row["model_prediction"].strip().split("|")
+    )))
     labels = row["label"].strip().split("|")
 
     true_positives, false_positives, false_negatives = retrieve_tpfpfn(
