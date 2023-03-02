@@ -308,7 +308,7 @@ class NERModel_pytorch(bm.Model):
 
             datasets = []
             for batch in spacy.util.minibatch(sents, config["batch_size"]):
-                tokenizer(
+                batch=tokenizer(
                     batch,
                     return_tensors="pt",
                     padding=True,
