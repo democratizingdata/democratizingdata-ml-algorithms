@@ -301,7 +301,7 @@ class NERModel_pytorch(bm.Model):
             config, include_optimizer=True
         )
 
-        test_samples = repository.get_test_data(batch_size=config["batch_size"])
+        # test_samples = repository.get_test_data(batch_size=config["batch_size"])
 
         step = config.get("start_step", 0)
         for epoch in range(config["epochs"]):
@@ -388,7 +388,7 @@ class NERModel_pytorch(bm.Model):
                     total_loss, total_n = 0, 0
                     for i, batch in enumerate(
                         tqdm(
-                            repository.get_test_data(batch_size=config["batch_size"]),
+                            repository.get_validation_data(batch_size=config["batch_size"]),
                             desc=f"Testing Epoch {epoch}",
                         )
                     ):
