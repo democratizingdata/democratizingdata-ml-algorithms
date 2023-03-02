@@ -119,7 +119,7 @@ def prepare_batch(
     tokenize_f = partial(
         tokenize_and_align_labels,
         partial(
-            tokenizer, 
+            tokenizer,
             **config.get("tokenizer_call_kwargs", {}),
         ),
     )
@@ -306,7 +306,6 @@ class NERModel_pytorch(bm.Model):
         )
 
         # test_samples = repository.get_test_data(batch_size=config["batch_size"])
-        print(config.get("tokenizer_call_kwargs", {}))
         step = config.get("start_step", 0)
         for epoch in range(config["epochs"]):
             model.train()
@@ -399,7 +398,6 @@ class NERModel_pytorch(bm.Model):
                         batch = prepare_batch(
                             tokenizer, collator, NERModel_pytorch.lbl_to_id, config, batch
                         )
-                        print(batch["input_ids"].shape)
                         batch = {k: v.to(device) for k, v in batch.items()}
                         outputs = model(**batch)
                         loss = outputs.loss
