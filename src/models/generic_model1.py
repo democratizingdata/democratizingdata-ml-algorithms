@@ -511,6 +511,7 @@ class GenericModel1(bm.Model):
 
         model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
 
+        model.to(device)
         model.eval()
         ng = torch.no_grad()
         ng.__enter__()
