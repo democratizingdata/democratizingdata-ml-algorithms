@@ -1,5 +1,5 @@
 from functools import partial
-from itertools import islice
+from itertools import filterfalse, islice
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -10,6 +10,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import spacy
 import torch
 import transformers as tfs
 from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
@@ -178,9 +179,49 @@ def color_text_figure(tokens, colors_true, colors_pred):
     return f
 
 
+def merge_tokens_w_classifications(
+    tokens:List[str],
+    classifications:List[float]
+) -> List[Tuple[str, float]]:
+    merged = []
+    for token, classification in zip(tokens, classifications):
+        if token.startswith("##"):
+            merged[-1] = (merged[-1][0] + token[2:], merged[-1][1])
+        else:
+            merged.append((token, classification))
+    return merged
+
+
+def is_special_token(token):
+    return token.startswith("[") and token.endswith("]")
+
+
+def high_probablity_token_groups(
+    tokens_classifications: List[Tuple[str, float]],
+    threshold:float=0.9,
+) -> List[List[Tuple[str, float]]]:
+
+    datasets = []
+    dataset = []
+    for token, score in tokens_classifications:
+        if score >= threshold:
+            dataset.append((token, score))
+        else:
+            if len(dataset) > 0:
+                datasets.append(dataset)
+                dataset = []
+    if len(dataset) > 0:
+        datasets.append(dataset)
+
+    return datasets
+
+
 class NERModel_pytorch(bm.Model):
     lbl_to_id = {"O": 0, "B-DAT": 1, "I-DAT": 2}
     id_to_lbl = {v: k for k, v in lbl_to_id.items()}
+
+    def __init__(self,):
+        self.nlp = spacy.load("en_core_web_sm")
 
     def get_model_objects(
         self,
@@ -197,14 +238,6 @@ class NERModel_pytorch(bm.Model):
             tokenizer,
             return_tensors="pt",
         )
-
-        # pretrained_config = AutoConfig.from_pretrained(
-        #     config["model_tokenizer_name"],
-        #     num_labels=len(self.lbl_to_id),
-        #     id2label=self.id_to_lbl,
-        #     label2id=self.lbl_to_id,
-        #     **config["model_kwargs"],
-        # )
 
         model = AutoModelForTokenClassification.from_pretrained(
             config["model_tokenizer_name"],
@@ -232,52 +265,130 @@ class NERModel_pytorch(bm.Model):
         else:
             return model, tokenizer, collator
 
+    def sentencize_text(self, text: str) -> List[str]:
+        max_tokens = 10_000
+
+
+        tokens = text.split()
+        if len(tokens) > max_tokens:
+            texts = [
+                " ".join(tokens[i : i + max_tokens])
+                for i in range(0, len(tokens), max_tokens)
+            ]
+            tokens = tokens[:max_tokens]
+        else:
+            texts = [text]
+
+        process_generator = self.nlp.pipe(
+            texts,
+            disable=["lemmatizer", "ner", "textcat"],
+        )
+
+        sents = []
+        for doc in process_generator:
+            sents.extend([sent.text for sent in doc.sents])
+
+        return sents
+
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        model, tokenizer, collator = self.get_model_objects(
+            config, include_optimizer=False
+        )
+
+        model.eval()
+        ng = torch.no_grad()
+        ng.__enter__()
+
+        def infer_sample(text:str) -> str:
+            sents = self.sentencize_text(text) # List[List[str]]
+            assert len(sents) > 0, "No sentences found in text"
+
+            datasets = []
+            for batch in spacy.util.minibatch(sents, config["batch_size"]):
+                tokenizer(
+                    batch,
+                    return_tensors="pt",
+                    padding=True,
+                    **config.get("tokenizer_call_kwargs", {}),
+                )
+
+                batch.to(device)
+
+                outputs = model(**batch)
+
+                # [batch, seq_len, 3]
+                classifications = torch.softmax(outputs.logits, dim=-1).detach().cpu().numpy()
+
+                # [batch, seq_len]
+                # we're going to merge the B and I labels into one label and
+                # assume token continuity
+                token_classification = classifications[:, :, 1:].sum(axis=-1)
+
+                tokens = list(map(
+                    tokenizer.convert_ids_to_tokens,
+                    batch["input_ids"].cpu().numpy()
+                )) # [batch, seq_len]
+
+                for sent, sent_classification in zip(
+                    tokens,
+                    token_classification
+                ):
+                    assert len(sent) == len(sent_classification), "Classification length mismatch"
+                    t_classifications = list(filterfalse(
+                        lambda x: is_special_token(x[0]),
+                        merge_tokens_w_classifications(
+                            sent,
+                            sent_classification
+                        )
+                    ))
+
+
+                    detections = high_probablity_token_groups(
+                        t_classifications,
+                        threshold=config.get("threshold", 0.9)
+                    ) # List[List[Tuple[str, float]]]
+
+                datasets.extend(detections)
+
+            return "|".join(list(map(
+                lambda x: " ".join(map(lambda y: y[0], x)),
+                datasets
+            )))
+
+        if config.get("inference_progress_bar", False):
+            tqdm.pandas()
+            df["model_prediction"] = df["text"].progress_apply(infer_sample)
+        else:
+            df["model_prediction"] = df["text"].apply(infer_sample)
+
+        ng.__exit__(None, None, None)
+
+
         return super().inference(config, df)
 
     def filter_by_idx(self, tokenizer, batch, outputs, idx):
         idx_mask = batch["input_ids"][idx] > 102
-        # print(
-        #     batch["input_ids"].size(),
-        #     batch["labels"].size(),
-        #     outputs.logits.size(),
-        #     idx_mask.size(),
-        # )
-
-        # print(
-        #     batch["input_ids"][idx].size(),
-        #     batch["labels"][idx].size(),
-        #     outputs.logits[idx].size(),
-        #     idx_mask.size(),
-        # )
 
         mask_f = lambda x: torch.masked_select(x, idx_mask)
-
-        # print("idx_mask", idx_mask)
-        # print("input_ids", batch["input_ids"][idx])
-        # print("mask_f(batch['input_ids'][idx])", mask_f(batch["input_ids"][idx]))
 
         selected_tokens = tokenizer.convert_ids_to_tokens(
             mask_f(batch["input_ids"][idx]).detach().cpu().numpy()
         )
-        # print(selected_tokens)
 
         selected_labels = mask_f(batch["labels"][idx]).detach().cpu()
-        # print("before where", selected_labels.size(), selected_labels)
         selected_labels = torch.where(
             selected_labels == -100, torch.tensor(0), selected_labels
         )
-        # print("after where", selected_labels.size(), selected_labels)
         selected_labels = (
             torch.nn.functional.one_hot(selected_labels, num_classes=3)
             .detach()
             .cpu()
             .numpy()
         )
-        # print("after one_hot", selected_labels.size(), selected_labels)
 
         selected_logits = outputs.logits[idx]
-        # print("selected_logits", selected_logits.size(), selected_logits)
         mask_f = lambda x: torch.masked_select(x, idx_mask.unsqueeze(-1)).view(-1, 3)
         selected_preds = (
             torch.nn.functional.softmax(mask_f(outputs.logits[idx]))
@@ -285,11 +396,6 @@ class NERModel_pytorch(bm.Model):
             .cpu()
             .numpy()
         )
-        # print("selected_preds", selected_preds.shape, selected_preds)
-
-        # print("===============================================================")
-        # print(selected_tokens, selected_labels, selected_preds)
-        # print("===============================================================")
         return selected_tokens, selected_labels, selected_preds
 
     def train(
