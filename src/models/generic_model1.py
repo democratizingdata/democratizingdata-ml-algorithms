@@ -513,9 +513,11 @@ class GenericModel1(bm.Model):
         if config.get("is_roberta", False):
             print("Merging tokens based on Roberta tokenizer")
             should_merge = lambda t: not t.startswith("Ġ")
+            clean = lambda t: t.replace("Ġ", "")
         else:
             print("Merging tokens based on BERT tokenizer")
             should_merge = lambda t: t.startswith("##")
+            clean = lambda t: t
 
 
         model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
@@ -574,7 +576,7 @@ class GenericModel1(bm.Model):
                     tokens_classifications = list(filterfalse(
                         lambda x: is_special_token(x[0]),
                         merge_tokens_w_classifications(
-                            sent,
+                            list(map(clean, sent)),
                             list(map(should_merge, sent)),
                             sent_classification,
                         )
