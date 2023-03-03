@@ -42,6 +42,19 @@ class SupportsLogging(Protocol):
         ...
 
 
+def flatten_hparams_for_logging(dictionary: Dict[str, Any]) -> Dict[str, Any]:
+    """Flattens a dictionary of hyperparameters for logging to SupportsLogging"""
+    flattened = {}
+    for key, value in dictionary.items():
+        if isinstance(value, dict):
+            flattened.update(flatten_hparams_for_logging(
+                {f"{key}:{k}":v for k,v in value.items()}
+            ))
+        else:
+            flattened[key] = value
+    return flattened
+
+
 class Model(Protocol):
     def train(
         self,

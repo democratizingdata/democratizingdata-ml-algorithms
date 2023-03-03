@@ -61,7 +61,7 @@ def train(
 ) -> None:
 
     validate_config(config)
-    training_logger.log_parameters(config)
+    training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
     model = NERModel_pytorch()
     model.train(repository, config, training_logger)
 
@@ -482,17 +482,26 @@ class NERModel_pytorch(bm.Model):
                             "loss", loss.detach().cpu().numpy(), step=step
                         )
 
+                        training_logger.log_metric(
+                            "learning_rate",
+                            # scheduler.get_last_lr()[0],
+                            optimizer.state_dict()['param_groups'][0]['lr'],
+                            step=step,
+                        )
+
                         training_logger.log_figure(
                             "best_sample_from_batch",
                             color_text_figure(best_tokens, best_labels, best_preds),
                             step=step,
                         )
 
+
                         training_logger.log_figure(
                             "worst_sample_from_batch",
                             color_text_figure(worst_tokens, worst_labels, worst_preds),
                             step=step,
                         )
+
 
                     model.eval()
                     total_loss, total_n = 0, 0
