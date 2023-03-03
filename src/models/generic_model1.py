@@ -357,7 +357,10 @@ def merge_tokens_w_classifications(
 
 
 def is_special_token(token):
-    return token.startswith("[") and token.endswith("]")
+    return (
+        token.startswith("[") and token.endswith("]")
+        or token.startswith("<") and token.endswith(">")
+    )
 
 
 
@@ -512,7 +515,7 @@ class GenericModel1(bm.Model):
 
         if config.get("is_roberta", False):
             print("Merging tokens based on Roberta tokenizer")
-            should_merge = lambda t: not t.startswith("Ġ")
+            should_merge = lambda t: not t.startswith("Ġ") and not t.startswith("<")
             clean = lambda t: t.replace("Ġ", "")
         else:
             print("Merging tokens based on BERT tokenizer")
