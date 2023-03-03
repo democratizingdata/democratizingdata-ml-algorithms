@@ -344,11 +344,12 @@ def masked_mean(
 
 def merge_tokens_w_classifications(
     tokens:List[str],
+    token_should_be_merged:List[bool],
     classifications:List[float]
 ) -> List[Tuple[str, float]]:
     merged = []
-    for token, classification in zip(tokens, classifications):
-        if token.startswith("##"):
+    for token, do_merge, classification in zip(tokens, token_should_be_merged, classifications):
+        if do_merge:
             merged[-1] = (merged[-1][0] + token[2:], merged[-1][1])
         else:
             merged.append((token, classification))
@@ -509,6 +510,14 @@ class GenericModel1(bm.Model):
             config["n_support_samples"],
         ) # [1,     1,     embed_dim]
 
+        if config.get("is_roberta", False):
+            print("Merging tokens based on Roberta tokenizer")
+            should_merge = lambda t: not t.startswith("Ġ")
+        else:
+            print("Merging tokens based on BERT tokenizer")
+            should_merge = lambda t: t.startswith("##")
+
+
         model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
 
         model.to(device)
@@ -566,7 +575,8 @@ class GenericModel1(bm.Model):
                         lambda x: is_special_token(x[0]),
                         merge_tokens_w_classifications(
                             sent,
-                            sent_classification
+                            list(map(should_merge, sent)),
+                            sent_classification,
                         )
                     ))
 
