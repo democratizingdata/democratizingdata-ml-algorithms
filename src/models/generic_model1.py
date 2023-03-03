@@ -1355,43 +1355,43 @@ class GenericModel1(bm.Model):
 
 
 if __name__ == "__main__":
-    # bm.train = train
-    # bm.validate = validate
-    # bm.main()
+    bm.train = train
+    bm.validate = validate
+    bm.main()
 
-    import src.data.kaggle_repository as kr
-    import src.evaluate.model as em
+    # import src.data.kaggle_repository as kr
+    # import src.evaluate.model as em
 
-    class MockRepo:
-        def __init__(self, df):
-            self.df = df
-        def get_validation_data(self):
-            return self.df
-        def copy(self):
-            return MockRepo(self.df.copy())
+    # class MockRepo:
+    #     def __init__(self, df):
+    #         self.df = df
+    #     def get_validation_data(self):
+    #         return self.df
+    #     def copy(self):
+    #         return MockRepo(self.df.copy())
 
 
-    model_name = "biomed_roberta"
-    config = dict(
-        support_no_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_nomask_embeddings.npy",
-        support_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_mask_embeddings.npy",
-        batch_size = 16,
-        threshold = 0.7,
-        inference_progress_bar = True,
-        n_support_samples = 16 * 100, 
-        model_tokenizer_name = f"models/generic_model1/sub_{model_name}",
-        model_kwargs=dict(from_tf=True),
-        tokenizer_kwargs=dict(add_prefix_space=True),
-        tokenizer_call_kwargs=dict(max_length=512, truncation=True, is_split_into_words=True),
-        is_roberta=True,
-    )
+    # model_name = "biomed_roberta"
+    # config = dict(
+    #     support_no_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_nomask_embeddings.npy",
+    #     support_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_mask_embeddings.npy",
+    #     batch_size = 16,
+    #     threshold = 0.7,
+    #     inference_progress_bar = True,
+    #     n_support_samples = 16 * 100, 
+    #     model_tokenizer_name = f"models/generic_model1/sub_{model_name}",
+    #     model_kwargs=dict(from_tf=True),
+    #     tokenizer_kwargs=dict(add_prefix_space=True),
+    #     tokenizer_call_kwargs=dict(max_length=512, truncation=True, is_split_into_words=True),
+    #     is_roberta=True,
+    # )
 
-    repo = MockRepo(kr.KaggleRepository().get_validation_data())
-    outs = em.evaluate_model(
-        repo.copy(),
-        GenericModel1(),
-        config,
-    )
+    # repo = MockRepo(kr.KaggleRepository().get_validation_data())
+    # outs = em.evaluate_model(
+    #     repo.copy(),
+    #     GenericModel1(),
+    #     config,
+    # )
 
     # from src.data.repository_resolver import resolve_repo
 
