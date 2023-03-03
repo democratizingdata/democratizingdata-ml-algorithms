@@ -350,7 +350,7 @@ def merge_tokens_w_classifications(
     merged = []
     for token, do_merge, classification in zip(tokens, token_should_be_merged, classifications):
         if do_merge:
-            merged[-1] = (merged[-1][0] + token[2:], merged[-1][1])
+            merged[-1] = (merged[-1][0] + token, merged[-1][1])
         else:
             merged.append((token, classification))
     return merged
@@ -517,7 +517,7 @@ class GenericModel1(bm.Model):
         else:
             print("Merging tokens based on BERT tokenizer")
             should_merge = lambda t: t.startswith("##")
-            clean = lambda t: t
+            clean = lambda t: t.replace("##", "")
 
 
         model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
