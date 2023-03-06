@@ -586,7 +586,7 @@ class GenericModel1(bm.Model):
                 merged_classifications = 0.5 * (token_classification + token_non_classification)
                 # merged_classifications = token_classification
 
-                merged_classifications = merged_classifications * batch.attention_mask.cpu().numpy()
+                merged_classifications = merged_classifications# * batch.attention_mask.cpu().numpy()
                 # Not sure why they do this  ===================================
 
 
