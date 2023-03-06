@@ -389,12 +389,13 @@ class GenericModel1(bm.Model):
         ["black", "green"],
     )
 
-    def __init__(self,):
+    def __init__(self):
         self.nlp = spacy.load("en_core_web_sm")
 
     def get_model_objects(
         self, config: Dict[str, Any], include_optimizer: bool
     ) -> None:
+        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         tokenizer = tfs.AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"], **config.get("tokenizer_kwargs", {})
@@ -410,12 +411,32 @@ class GenericModel1(bm.Model):
             config["model_tokenizer_name"], **config.get("model_kwargs", {})
         )
 
-        # if torch.cuda.is_available():
-        #     model = model.cuda()
+        linear = torch.nn.Linear(
+            model.config.hidden_size,
+            model.config.hidden_size,
+            bias=True,
+        )
+
+        # this might be brittle. We are going to assume that if the model name
+        # is a path, then we are loading a model that has already been trained
+        # and therefore has the dense layer saved. If it is not a path, then
+        # then it is a model that is being pulled from huggingface and we'll
+        # keep the random weights
+        if os.path.exists(config["model_tokenizer_name"]):
+            linear.load_state_dict(
+                torch.load(os.path.join(
+                    config["model_tokenizer_name"],
+                    "linear.bin"
+                ))
+            )
+
+        # model.to(device)
+        # linear.to(device)
 
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
-                model.parameters(), **config.get("optimizer_kwargs", {})
+                list(model.parameters()) + list(linear.parameters()),
+                **config.get("optimizer_kwargs", {})
             )
 
             if "scheduler" in config:
@@ -453,11 +474,10 @@ class GenericModel1(bm.Model):
                 metric_scheduler,
             )
         else:
-            return model, tokenizer, collator
+            return model, linear, tokenizer, collator
 
     def sentencize_text(self, text: str) -> List[str]:
         max_tokens = 10_000
-
 
         tokens = text.split()
         if len(tokens) > max_tokens:
@@ -495,8 +515,6 @@ class GenericModel1(bm.Model):
             keepdims=True,
         )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
 
-
-
         return support_tokens
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
@@ -523,9 +541,10 @@ class GenericModel1(bm.Model):
             clean = lambda t: t.replace("##", "")
 
 
-        model, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
+        model, linear, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
 
         model.to(device)
+        linear.to(device)
         model.eval()
         ng = torch.no_grad()
         ng.__enter__()
@@ -547,7 +566,7 @@ class GenericModel1(bm.Model):
 
                 batch = batch.to(device)
                 outputs = model(**batch)
-                output_embedding = outputs.last_hidden_state # [batch, token, embed_dim]
+                output_embedding = linear(outputs.last_hidden_state) # [batch, token, embed_dim]
                 cos_sim = torch.nn.functional.cosine_similarity(
                     output_embedding, masked_embedding, dim=-1
                 ) # [batch, token]
@@ -560,9 +579,13 @@ class GenericModel1(bm.Model):
                 ) # [batch, token]
 
                 # Not sure why they do this  ===================================
+                # This isn't documented in the paper, but it's in the code
                 token_classification = token_classification.cpu().numpy() # [batch, token]
                 token_non_classification = token_non_classification.cpu().numpy() # [batch, token]
                 merged_classifications = 0.5 * (token_classification + token_non_classification)
+                # merged_classifications = token_classification
+
+                merged_classifications = merged_classifications * batch.attention_mask.cpu().numpy()
                 # Not sure why they do this  ===================================
 
 
@@ -618,6 +641,7 @@ class GenericModel1(bm.Model):
 
         (
             model,
+            linear,
             tokenizer,
             collator,
             optimizer,
@@ -626,6 +650,9 @@ class GenericModel1(bm.Model):
             metric_optimizer,
             metric_scheduler,
         ) = self.get_model_objects(config, include_optimizer=True)
+
+        model.to(device)
+        linear.to(device)
 
         training_iter = repository.get_training_data(
             batch_size=config["batch_size"],
@@ -687,6 +714,7 @@ class GenericModel1(bm.Model):
                     output_support.last_hidden_state
                 )  # [bs, seq_len, emb_dim]
                 # might be support_hidden_states = output_support.hidden_states[-1]
+                linear_embedding = linear(support_embedding)  # [bs, seq_len, emb_dim]
 
                 # the first token is the CLS token which is the support embedding
                 support_embedding = support_hidden_states[:, 0, :]  # [bs, emb_dim]
@@ -694,7 +722,7 @@ class GenericModel1(bm.Model):
                 # ==============================================================
 
                 mask_embedding = masked_mean(
-                    support_hidden_states,
+                    linear_embedding,
                     support_mask_token_indicator.unsqueeze(-1),
                     axis=1,  # average over sequence length
                     keepdim=False,
@@ -703,7 +731,7 @@ class GenericModel1(bm.Model):
                 )  # average over batch size, [1, emb_dim]
 
                 non_mask_embedding = masked_mean(
-                    support_hidden_states,
+                    linear_embedding,
                     (1 - support_mask_token_indicator).unsqueeze(-1),
                     axis=1,  # average over sequence length
                     keepdim=False,
@@ -903,6 +931,10 @@ class GenericModel1(bm.Model):
                         )
                         model.save_pretrained(save_path)
                         tokenizer.save_pretrained(save_path)
+                        torch.save(
+                            linear.state_dict(),
+                            os.path.join(save_path, "linear.pt")
+                        )
 
                     with training_logger.train():
                         if persample_detached.shape[0] > 1:
@@ -1355,43 +1387,45 @@ class GenericModel1(bm.Model):
 
 
 if __name__ == "__main__":
-    bm.train = train
-    bm.validate = validate
-    bm.main()
+    # bm.train = train
+    # bm.validate = validate
+    # bm.main()
 
-    # import src.data.kaggle_repository as kr
-    # import src.evaluate.model as em
+    import src.data.kaggle_repository as kr
+    import src.evaluate.model as em
 
-    # class MockRepo:
-    #     def __init__(self, df):
-    #         self.df = df
-    #     def get_validation_data(self):
-    #         return self.df
-    #     def copy(self):
-    #         return MockRepo(self.df.copy())
+    class MockRepo:
+        def __init__(self, df):
+            self.df = df
+        def get_validation_data(self):
+            return self.df
+        def copy(self):
+            return MockRepo(self.df.copy())
 
 
-    # model_name = "biomed_roberta"
-    # config = dict(
-    #     support_no_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_nomask_embeddings.npy",
-    #     support_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_mask_embeddings.npy",
-    #     batch_size = 16,
-    #     threshold = 0.7,
-    #     inference_progress_bar = True,
-    #     n_support_samples = 16 * 100, 
-    #     model_tokenizer_name = f"models/generic_model1/sub_{model_name}",
-    #     model_kwargs=dict(from_tf=True),
-    #     tokenizer_kwargs=dict(add_prefix_space=True),
-    #     tokenizer_call_kwargs=dict(max_length=512, truncation=True, is_split_into_words=True),
-    #     is_roberta=True,
-    # )
+    model_name = "biomed_roberta"
+    config = dict(
+        support_no_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_nomask_embeddings.npy",
+        support_mask_embedding_path = f"models/generic_model1/sub_{model_name}/embeddings/support_mask_embeddings.npy",
+        batch_size = 2,
+        threshold = 0.7,
+        inference_progress_bar = True,
+        n_support_samples = 16 * 100,
+        model_tokenizer_name = f"models/generic_model1/sub_{model_name}",
+        model_kwargs=dict(from_tf=True, output_hidden_states=True),
+        tokenizer_kwargs=dict(add_prefix_space=True),
+        tokenizer_call_kwargs=dict(max_length=512, truncation=True, is_split_into_words=True),
+        is_roberta=True,
+    )
 
-    # repo = MockRepo(kr.KaggleRepository().get_validation_data())
-    # outs = em.evaluate_model(
-    #     repo.copy(),
-    #     GenericModel1(),
-    #     config,
-    # )
+    print("getting")
+    repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
+    print("data retieved")
+    outs = em.evaluate_model(
+        repo.copy(),
+        GenericModel1(),
+        config,
+    )
 
     # from src.data.repository_resolver import resolve_repo
 
