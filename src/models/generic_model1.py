@@ -465,6 +465,7 @@ class GenericModel1(bm.Model):
 
             return (
                 model,
+                linear,
                 tokenizer,
                 collator,
                 optimizer,
