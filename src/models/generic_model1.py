@@ -664,6 +664,7 @@ class GenericModel1(bm.Model):
         for epoch in range(config["epochs"]):
             for batch in tqdm(training_iter, desc=f"Training Epoch {epoch}"):
                 model.train()
+                linear.train()
                 metric_loss.train()
 
                 # bs = support batch size
@@ -715,7 +716,7 @@ class GenericModel1(bm.Model):
                     output_support.last_hidden_state
                 )  # [bs, seq_len, emb_dim]
                 # might be support_hidden_states = output_support.hidden_states[-1]
-                linear_embedding = linear(support_hidden_states)  # [bs, seq_len, emb_dim]
+                support_linear_embedding = linear(support_hidden_states)  # [bs, seq_len, emb_dim]
 
                 # the first token is the CLS token which is the support embedding
                 support_embedding = support_hidden_states[:, 0, :]  # [bs, emb_dim]
@@ -723,7 +724,7 @@ class GenericModel1(bm.Model):
                 # ==============================================================
 
                 mask_embedding = masked_mean(
-                    linear_embedding,
+                    support_linear_embedding,
                     support_mask_token_indicator.unsqueeze(-1),
                     axis=1,  # average over sequence length
                     keepdim=False,
@@ -732,7 +733,7 @@ class GenericModel1(bm.Model):
                 )  # average over batch size, [1, emb_dim]
 
                 non_mask_embedding = masked_mean(
-                    linear_embedding,
+                    support_linear_embedding,
                     (1 - support_mask_token_indicator).unsqueeze(-1),
                     axis=1,  # average over sequence length
                     keepdim=False,
@@ -747,16 +748,17 @@ class GenericModel1(bm.Model):
                     output_query.last_hidden_state
                 )  # [bq, seq_len, emb_dim]
                 # might be query_hidden_states = output_query.hidden_states[-1]
+                query_linear_embedding = linear(query_hidden_states)  # [bq, seq_len, emb_dim]
 
                 label_embedding = masked_mean(
-                    query_hidden_states,
+                    query_linear_embedding,
                     query_label_token_indicator.unsqueeze(-1),
                     axis=1,  # average over sequence length
                     keepdim=False,
                 )  # [bq, emb_dim]
 
                 non_label_embedding = masked_mean(
-                    query_hidden_states,
+                    query_linear_embedding,
                     (1 - query_label_token_indicator).unsqueeze(-1)
                     * batch_query["attention_mask"].unsqueeze(-1),
                     axis=1,  # average over sequence length
@@ -873,9 +875,9 @@ class GenericModel1(bm.Model):
                 # Step 1
                 cos_sim_mask_query = torch.nn.functional.cosine_similarity(
                     # we need to add a 'token' dimension to the mask embedding
-                    # so that it can be broadcasted with the query_hidden_states
+                    # so that it can be broadcasted with the linear_embedding
                     mask_embedding.view(len(mask_embedding), 1, -1),
-                    query_hidden_states,
+                    query_linear_embedding,
                     dim=-1,
                 )  # [bq, seq_len]
 
@@ -1048,6 +1050,7 @@ class GenericModel1(bm.Model):
                     # test evaluation ==========================================
                     model.eval()
                     metric_loss.eval()
+                    linear.eval()
 
                     total_loss, total_n = 0, 0
                     total_metric_loss, total_metric_loss_n = 0, 0
@@ -1094,13 +1097,14 @@ class GenericModel1(bm.Model):
                         support_hidden_states = (
                             output_support.last_hidden_state
                         )  # [bs, seq_len, emb_dim]
+                        support_linear_embedding = linear(support_hidden_states) # [bs, seq_len, emb_dim]
 
                         support_embedding = support_hidden_states[
                             :, 0, :
                         ]  # [bs, emb_dim]
 
                         mask_embedding = masked_mean(
-                            support_hidden_states,
+                            support_linear_embedding,
                             support_mask_token_indicator.unsqueeze(-1),
                             axis=1,  # average over sequence length
                             keepdim=False,
@@ -1109,7 +1113,7 @@ class GenericModel1(bm.Model):
                         )  # average over batch size
 
                         non_mask_embedding = masked_mean(
-                            support_hidden_states,
+                            support_linear_embedding,
                             (1 - support_mask_token_indicator).unsqueeze(-1),
                             axis=1,  # average over sequence length
                             keepdim=False,
@@ -1121,16 +1125,17 @@ class GenericModel1(bm.Model):
                         query_hidden_states = (
                             output_query.last_hidden_state
                         )  # [bq, seq_len, emb_dim]
+                        query_linear_embedding = linear(query_hidden_states) # [bq, seq_len, emb_dim]
 
                         label_embedding = masked_mean(
-                            query_hidden_states,
+                            query_linear_embedding,
                             query_label_token_indicator.unsqueeze(-1),
                             axis=1,  # average over sequence length
                             keepdim=False,
                         )  # [bq, emb_dim]
 
                         non_label_embedding = masked_mean(
-                            query_hidden_states,
+                            query_linear_embedding,
                             (1 - query_label_token_indicator).unsqueeze(-1)
                             * batch_query["attention_mask"].unsqueeze(-1),
                             axis=1,  # average over sequence length
@@ -1216,7 +1221,7 @@ class GenericModel1(bm.Model):
 
                         cos_sim_mask_query = torch.nn.functional.cosine_similarity(
                             mask_embedding.view(len(mask_embedding), 1, -1),
-                            query_hidden_states,
+                            query_linear_embedding,
                             dim=-1,
                         )  # [bq, seq_len]
 

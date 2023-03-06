@@ -23,11 +23,17 @@ class ModelEvaluation:
 
     @property
     def precision(self) -> float:
-        return self.tp / (self.tp + self.fp)
+        try:
+            return self.tp / (self.tp + self.fp)
+        except ZeroDivisionError:
+            return 0
 
     @property
     def recall(self) -> float:
-        return self.tp / (self.tp + self.fn)
+        try:
+            return self.tp / (self.tp + self.fn)
+        except ZeroDivisionError:
+            return 0
 
     def to_json(self) -> Dict[str, Any]:
         json_encoding = dict(
