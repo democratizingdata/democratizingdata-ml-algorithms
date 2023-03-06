@@ -715,7 +715,7 @@ class GenericModel1(bm.Model):
                     output_support.last_hidden_state
                 )  # [bs, seq_len, emb_dim]
                 # might be support_hidden_states = output_support.hidden_states[-1]
-                linear_embedding = linear(support_embedding)  # [bs, seq_len, emb_dim]
+                linear_embedding = linear(support_hidden_states)  # [bs, seq_len, emb_dim]
 
                 # the first token is the CLS token which is the support embedding
                 support_embedding = support_hidden_states[:, 0, :]  # [bs, emb_dim]
