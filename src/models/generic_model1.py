@@ -407,6 +407,13 @@ class GenericModel1(bm.Model):
         # then it is a model that is being pulled from huggingface and we'll
         # keep the random weights
         if os.path.exists(config["model_tokenizer_name"]):
+            print(
+                "Loading pretrained linear layer from:",
+                os.path.join(
+                    config["model_tokenizer_name"],
+                    "linear.bin"
+                )
+            )
             linear.load_state_dict(
                 torch.load(os.path.join(
                     config["model_tokenizer_name"],
