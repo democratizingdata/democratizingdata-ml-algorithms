@@ -60,23 +60,7 @@ def train(
 ) -> None:
     validate_config(config)
 
-    def update_param_dict(
-        param_dict: Dict[str, Any],
-        key: str
-    ) -> None:
-        for k, v in config[key].items():
-            param_dict[key + ":" + k] = v
-
-    logging_dict = {
-        "model_tokenizer_name": config["model_tokenizer_name"],
-        "optimizer": config["optimizer"],
-    }
-    update_param_dict(logging_dict, "tokenizer_kwargs")
-    update_param_dict(logging_dict, "tokenizer_call_kwargs")
-    update_param_dict(logging_dict, "model_kwargs")
-    update_param_dict(logging_dict, "optimizer_kwargs")
-
-    training_logger.log_parameters(logging_dict)
+    training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
 
     model = GenericModel1()
     model.train(repository, config, training_logger)
