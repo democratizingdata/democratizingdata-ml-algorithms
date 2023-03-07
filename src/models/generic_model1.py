@@ -395,6 +395,9 @@ class GenericModel1(bm.Model):
             config["model_tokenizer_name"], **config.get("model_kwargs", {})
         )
 
+        for param in model.parameters():
+            print(param.data)
+
         print("Model linear layer size:", model.config.hidden_size)
         linear = torch.nn.Linear(
             model.config.hidden_size,
@@ -422,9 +425,6 @@ class GenericModel1(bm.Model):
                 )),
                 strict=True,
             )
-
-            for param in linear.parameters():
-                print(param.data)
 
         # model.to(device)
         # linear.to(device)
