@@ -423,6 +423,9 @@ class GenericModel1(bm.Model):
                 strict=True,
             )
 
+            for param in linear.parameters():
+                print(param.data)
+
         # model.to(device)
         # linear.to(device)
 
