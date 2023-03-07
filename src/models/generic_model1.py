@@ -395,6 +395,7 @@ class GenericModel1(bm.Model):
             config["model_tokenizer_name"], **config.get("model_kwargs", {})
         )
 
+        print("Model linear layer size:", model.config.hidden_size)
         linear = torch.nn.Linear(
             model.config.hidden_size,
             model.config.hidden_size,
@@ -418,7 +419,8 @@ class GenericModel1(bm.Model):
                 torch.load(os.path.join(
                     config["model_tokenizer_name"],
                     "linear.bin"
-                ))
+                )),
+                strict=True,
             )
 
         # model.to(device)
@@ -507,6 +509,8 @@ class GenericModel1(bm.Model):
         #     keepdims=True,
         # )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
 
+        print("getting:", path, support_tokens.shape)
+
         return np.mean(
             support_tokens,
             axis=0,
@@ -542,6 +546,7 @@ class GenericModel1(bm.Model):
         model.to(device)
         linear.to(device)
         model.eval()
+        linear.eval()
         ng = torch.no_grad()
         ng.__enter__()
 
