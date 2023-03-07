@@ -489,18 +489,22 @@ class GenericModel1(bm.Model):
 
         support_tokens = np.load(path) #[n, embed_dim]
 
-        sample_idxs = np.random.choice(
-            np.arange(support_tokens.shape[0]),
-            n_samples
-        )
+        # sample_idxs = np.random.choice(
+        #     np.arange(support_tokens.shape[0]),
+        #     n_samples
+        # )
 
-        support_tokens = np.mean(
-            support_tokens[sample_idxs, :], # [n, embed_dim]
+        # support_tokens = np.mean(
+        #     support_tokens[sample_idxs, :], # [n, embed_dim]
+        #     axis=0,
+        #     keepdims=True,
+        # )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
+
+        return np.mean(
+            support_tokens,
             axis=0,
-            keepdims=True,
-        )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
-
-        return support_tokens
+            keepdims=True
+        )[np.newaxis, ...].astype(np.float32)
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
