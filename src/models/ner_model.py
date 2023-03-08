@@ -231,7 +231,7 @@ class NERModel_pytorch(bm.Model):
 
         tokenizer = AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"],
-            **config["tokenizer_kwargs"],
+            **config.get("tokenizer_kwargs",{}),
         )
 
         collator = tfs.data.data_collator.DataCollatorForTokenClassification(
@@ -307,14 +307,13 @@ class NERModel_pytorch(bm.Model):
             assert len(sents) > 0, "No sentences found in text"
 
             datasets = []
-            for batch in spacy.util.minibatch(sents, config["batch_size"]):
+            for _batch in spacy.util.minibatch(sents, config["batch_size"]):
                 batch=tokenizer(
-                    batch,
+                    [b.split() for b in _batch],
                     return_tensors="pt",
                     padding=True,
                     **config.get("tokenizer_call_kwargs", {}),
                 )
-
                 batch.to(device)
 
                 outputs = model(**batch)
@@ -351,7 +350,7 @@ class NERModel_pytorch(bm.Model):
                         threshold=config.get("threshold", 0.9)
                     ) # List[List[Tuple[str, float]]]
 
-                datasets.extend(detections)
+                    datasets.extend(detections)
 
             return "|".join(list(map(
                 lambda x: " ".join(map(lambda y: y[0], x)),
@@ -570,11 +569,53 @@ class NERModel_pytorch(bm.Model):
 
 
 if __name__ == "__main__":
-    bm.train = train
-    bm.validate = validate
-    bm.main()
+    # bm.train = train
+    # bm.validate = validate
+    # bm.main()
 
-    # from src.data.repository_resolver import resolve_repo
+    import src.data.kaggle_repository as kr
+    import src.evaluate.model as em
+
+    class MockRepo:
+        def __init__(self, df):
+            self.df = df
+        def get_validation_data(self):
+            return self.df
+        def copy(self):
+            return MockRepo(self.df.copy())
+
+    config = {
+        "accum_for": 1,
+        "max_cores": 24,
+        "max_seq_len": 512,
+        "use_amp": True,
+        "learning_rate": 1e-5,
+        "model_path": "baseline",
+        "batch_size": 16,
+        "save_model": True,
+
+        "epochs": 5,
+        "model_tokenizer_name": "distilbert-base-cased",
+        "tokenizer_call_kwargs": {
+            "max_length":512,
+            "truncation":True,
+            "is_split_into_words": True
+        },
+        "model_kwargs": {
+        },
+        "optimizer": "torch.optim.Adam",
+        "optimizer_kwargs": {
+        }
+    }
+
+    print("getting")
+    repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
+    print("data retieved")
+    outs = em.evaluate_model(
+        repo.copy(),
+        NERModel_pytorch(),
+        config,
+    )
 
     # repository = resolve_repo("snippet-ner")
     # config = {
