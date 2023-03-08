@@ -498,6 +498,8 @@ class GenericModel1(bm.Model):
 
         support_tokens = np.load(path) #[n, embed_dim]
 
+        print("getting", n_samples, "from" path, support_tokens.shape)
+        
         sample_idxs = np.random.choice(
             np.arange(support_tokens.shape[0]),
             n_samples
@@ -509,13 +511,8 @@ class GenericModel1(bm.Model):
             keepdims=True,
         )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
 
-        print("getting:", path, support_tokens.shape)
 
-        return np.mean(
-            support_tokens,
-            axis=0,
-            keepdims=True
-        )[np.newaxis, ...].astype(np.float32)
+        return support_tokens
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
@@ -599,7 +596,7 @@ class GenericModel1(bm.Model):
                     tokens,
                     merged_classifications
                 ):
-                    assert len(sent) == len(sent_classification), "Classification length mismatch"
+                    assert len(sent) == len(sent_classification), f"Classification length mismatch {len(sent)} != {len(sent_classification)}"
                     tokens_classifications = list(filterfalse(
                         lambda x: is_special_token(x[0]),
                         merge_tokens_w_classifications(
