@@ -499,7 +499,7 @@ class GenericModel1(bm.Model):
         support_tokens = np.load(path) #[n, embed_dim]
 
         print("getting", n_samples, "from", path, support_tokens.shape)
-        
+
         sample_idxs = np.random.choice(
             np.arange(support_tokens.shape[0]),
             n_samples
@@ -542,8 +542,8 @@ class GenericModel1(bm.Model):
 
         model.to(device)
         linear.to(device)
-        model.eval()
-        linear.eval()
+        model.train()
+        linear.train()
         ng = torch.no_grad()
         ng.__enter__()
 
