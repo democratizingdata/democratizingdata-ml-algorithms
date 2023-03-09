@@ -518,10 +518,10 @@ class GenericModel1(bm.Model):
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
                                                              # [batch, token, embed_dim]
-        # mask_embedding = self.get_support_mask_embed(
-        #     config["support_mask_embedding_path"],
-        #     config["n_support_samples"],
-        # ) # [1,     1,     embed_dim]
+        mask_embedding = self.get_support_mask_embed(
+            config["support_mask_embedding_path"],
+            config["n_support_samples"],
+        ) # [1,     1,     embed_dim]
 
         no_mask_embedding = self.get_support_mask_embed(
             config["support_no_mask_embedding_path"],
@@ -547,23 +547,23 @@ class GenericModel1(bm.Model):
         ng = torch.no_grad()
         ng.__enter__()
 
-        # masked_embedding = torch.from_numpy(mask_embedding).to(device)
-        # no_mask_embedding = torch.from_numpy(no_mask_embedding).to(device)
+        masked_embedding = torch.from_numpy(mask_embedding).to(device)
+        no_mask_embedding = torch.from_numpy(no_mask_embedding).to(device)
         def infer_sample(text:str) -> str:
             sents = self.sentencize_text(text) # List[List[str]]
             assert len(sents) > 0, "No sentences found in text"
 
             datasets = []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
-                masked_embedding = torch.from_numpy(self.get_support_mask_embed(
-                    config["support_mask_embedding_path"],
-                    config["n_support_samples"],
-                )).to(device) # [1,     1,     embed_dim]
+                # masked_embedding = torch.from_numpy(self.get_support_mask_embed(
+                #     config["support_mask_embedding_path"],
+                #     config["n_support_samples"],
+                # )).to(device) # [1,     1,     embed_dim]
 
-                no_mask_embedding = torch.from_numpy(self.get_support_mask_embed(
-                    config["support_no_mask_embedding_path"],
-                    config["n_support_samples"],
-                )).to(device) # [1,     1,     embed_dim]
+                # no_mask_embedding = torch.from_numpy(self.get_support_mask_embed(
+                #     config["support_no_mask_embedding_path"],
+                #     config["n_support_samples"],
+                # )).to(device) # [1,     1,     embed_dim]
 
 
                 batch = tokenizer(
