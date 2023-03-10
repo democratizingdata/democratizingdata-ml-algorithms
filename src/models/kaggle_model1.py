@@ -95,12 +95,14 @@ class KaggleModel1(bm.Model):
         model_config.output_attentions = True
         model_config.output_hidden_states = True
 
+        ll_model = tfs.TFAutoModel.from_config(config=model_config)
+        print(ll_model)
         model = MetricLearningModel(config=model_config, name="metric_learning_model")
-        model.main_model = tfs.TFAutoModel.from_config(config=model_config)
+        model.main_model = ll_model
         model.K = 3
 
         tokenizer = tfs.AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
-
+        print(type(tokenizer))
         mask_embedding = self.get_support_mask_embed(
             config["support_mask_embedding_path"],
             config["n_support_samples"],
@@ -122,7 +124,7 @@ class KaggleModel1(bm.Model):
             return_query_ids=True,
         )
         query_batch = test_dataloader.__getitem__(0)
-
+        print(query_batch["input_ids"].shape, query_batch["attention_mask"].shape)
         _ = model(
             [
                 query_batch["input_ids"][:1, ...],
@@ -234,8 +236,8 @@ if __name__ == "__main__":
         support_no_mask_embedding_path = "models/kaggle_model1/sub_biomed_roberta/embeddings/support_nomask_embeddings.npy",
         n_support_samples = 100,
         model_tokenizer_name = "models/kaggle_model1/sub_biomed_roberta",
-        weights_path = "models/kaggle_model1/sub_biomed_roberta",
-        batch_size = 2,
+        weights_path = "models/kaggle_model1/sub_biomed_roberta/embeddings",
+        batch_size = 128,
     )
 
     model = KaggleModel1()
