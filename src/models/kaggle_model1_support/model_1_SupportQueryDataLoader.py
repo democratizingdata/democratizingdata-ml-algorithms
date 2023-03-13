@@ -100,13 +100,19 @@ class SupportQueryDataLoader(Sequence):
             )
 
         for k in list(["input_ids", "attention_mask", "token_type_ids"]):
-            query_batch[k] = np.array(query_batch[k]).astype(np.int32)
+            vals = np.array(query_batch[k]).astype(np.int32)
+            if len(vals.shape) == 3:
+                vals = np.squeeze(vals, axis=0)
+            query_batch[k] = vals
 
         return query_batch
 
     def _process_data(self, inp_string, label_string, masked_label=False):
         input_tokenize = self.tokenizer(
-            inp_string, return_offsets_mapping=True, max_length=SEQUENCE_LENGTH, truncation=True
+            inp_string,
+            return_offsets_mapping=True,
+            max_length=SEQUENCE_LENGTH,
+            truncation=True,
         )
         results = {
             "input_ids": input_tokenize["input_ids"],

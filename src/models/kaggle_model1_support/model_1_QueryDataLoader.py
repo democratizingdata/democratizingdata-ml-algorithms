@@ -8,7 +8,10 @@ class QueryDataLoader(Sequence):
         self.data = data.fillna("")
         self.batch_ids = self.data["id"].tolist()
         self.batch_text = self.data["text"].tolist()
-        self.batch_label = self.data["label"].tolist()
+        if "label" in self.data.columns:
+            self.batch_label = self.data["label"].tolist()
+        else:
+            self.batch_label = [""] * len(self.batch_ids)
 
     def __len__(self):
         return math.ceil(len(self.batch_text) / self.batch_size)

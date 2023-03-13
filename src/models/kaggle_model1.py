@@ -1,4 +1,5 @@
 import dataclasses as dc
+from functools import partial
 import glob
 from itertools import filterfalse
 import os
@@ -89,6 +90,24 @@ class KaggleModel1(bm.Model):
         return support_tokens
 
 
+    def slice_up_samples(self, seq_len:int, row:pd.DataFrame) -> Dict[str, str]:
+        tokens = row["text"].replace("\n", " ").split()
+
+        split_up = [" ".join(tokens[i * seq_len: (i+1) * seq_len]) for i in range(len(tokens)//seq_len)]
+
+        return dict(
+            id = [row["id"]] * len(split_up),
+            text = split_up,
+        )
+
+    def _slice_up_text(self, seq_len:int, text:str) -> List[str]:
+        tokens = text.replace("\n", " ").split()
+
+        split_up = [" ".join(tokens[i * seq_len: (i+1) * seq_len]) for i in range(len(tokens)//seq_len)]
+
+        return split_up
+
+
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
         model_config = tfs.AutoConfig.from_pretrained(config["model_tokenizer_name"])
@@ -96,13 +115,11 @@ class KaggleModel1(bm.Model):
         model_config.output_hidden_states = True
 
         ll_model = tfs.TFAutoModel.from_config(config=model_config)
-        print(ll_model)
         model = MetricLearningModel(config=model_config, name="metric_learning_model")
         model.main_model = ll_model
         model.K = 3
 
         tokenizer = tfs.AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
-        print(type(tokenizer))
         mask_embedding = self.get_support_mask_embed(
             config["support_mask_embedding_path"],
             config["n_support_samples"],
@@ -113,9 +130,19 @@ class KaggleModel1(bm.Model):
             config["n_support_samples"],
         ) # [n,     embed_dim]
 
-        query_dl = QueryDataLoader(df, batch_size=config["batch_size"])
+
+        slice_f = partial(self.slice_up_samples, config["seq_len"])
+        slice_dicts = df.apply(slice_f, axis=1)
+        sliced_df = pd.DataFrame(dict(
+            id = [d["id"] for d in slice_dicts],
+            text = [d["text"] for d in slice_dicts],
+        ))
+        # sliced = self.slice_up_samples(df, config["seq_len"])
+
+
+        query_dl = QueryDataLoader(sliced_df, batch_size=config["batch_size"])
         test_dataloader = SupportQueryDataLoader(
-            df,
+            sliced_df,
             tokenizer=tokenizer,
             batch_size=config["batch_size"],
             is_train=False,
@@ -142,13 +169,13 @@ class KaggleModel1(bm.Model):
 
 
         def infer_sample(text: str) -> str:
-            sents = self.sentencize_text(text)
+            sents = self._slice_up_text(config["seq_len"], text)
 
             for batch in spacy.util.minibatch(sents, config["batch_size"]):
                 tokenized_batch = tokenizer(
                     batch,
                     return_tensors="tf",
-                    max_length=512,
+                    max_length=config["seq_len"],
                     truncation=True,
                     padding=True,
                 )
@@ -159,7 +186,7 @@ class KaggleModel1(bm.Model):
                         config["n_support_samples"],
                     ),
                     ...
-                ].mean(axis=0, keepdims=True)[np.newaxis, ...] # [1, 1, embed_dim]
+                ].mean(axis=0, keepdims=True) # [1, 1, embed_dim]
 
                 batch_no_mask_embeddings = no_mask_embedding[
                     np.random.choice(
@@ -167,7 +194,7 @@ class KaggleModel1(bm.Model):
                         config["n_support_samples"],
                     ),
                     ...
-                ].mean(axis=0, keepdims=True)[np.newaxis, ...] # [1, 1, embed_dim]
+                ].mean(axis=0, keepdims=True) # [1, 1, embed_dim]
 
                 (
                     query_embeddings,
@@ -190,11 +217,17 @@ class KaggleModel1(bm.Model):
                     tokenized_batch["input_ids"].numpy()
                 ))
 
+
+
                 for sent, sent_classification in zip(
                     tokens,
-                    attention_values.numpy(),
+                    attention_values.numpy()[...,0],
                 ):
                     assert len(sent) == len(sent_classification), f"Classification length mismatch {len(sent)} != {len(sent_classification)}"
+                    if np.any(sent_classification > 0.7):
+                        print(sent)
+                        print(sent_classification)
+
                     # tokens_classifications = list(filterfalse(
                     #     lambda x: is_special_token(x[0]),
                     #     merge_tokens_w_classifications(
@@ -210,11 +243,12 @@ class KaggleModel1(bm.Model):
                     # ) # List[List[Tuple[str, float]]]
 
                     # datasets.extend(detections)
-                print("query_embeddings", query_embeddings.shape)
-                print("query_mask_embeddings", query_mask_embeddings.shape)
+                # print("query_embeddings", query_embeddings.shape)
+                # print("query_mask_embeddings", query_mask_embeddings.shape)
 
         df["model_prediction"] = df["text"].apply(infer_sample)
 
+        return df
 
 if __name__ == "__main__":
     # bm.train = train
@@ -238,14 +272,24 @@ if __name__ == "__main__":
         model_tokenizer_name = "models/kaggle_model1/sub_biomed_roberta",
         weights_path = "models/kaggle_model1/sub_biomed_roberta/embeddings",
         batch_size = 128,
+        seq_len = 320,
     )
 
     model = KaggleModel1()
 
-    repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
-
-    outs = em.evaluate_model(
-        repo.copy(),
-        KaggleModel1(),
-        config,
+    sample = kr.KaggleRepository().get_training_sample_by_id(
+        "3af0a4ad-2fd3-430f-880b-c0c8c1b097e1"
     )
+    # sample["text"] = sample["text"]
+
+    outs = KaggleModel1().inference(config, sample)
+
+    print(outs)
+
+    # repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
+
+    # outs = em.evaluate_model(
+    #     repo.copy(),
+    #     KaggleModel1(),
+    #     config,
+    # )

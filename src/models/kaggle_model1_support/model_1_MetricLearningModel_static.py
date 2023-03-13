@@ -30,7 +30,11 @@ class MetricLearningModel(tf.keras.Model):
         nomask_embeddings=None,
         use_only_mask=False   # this is set always to false at inference
     ):
-        output_hidden_states = self.main_model(input_ids=inputs[0], attention_mask=inputs[1], training=training)
+        output_hidden_states = self.main_model(
+            input_ids=inputs[0],
+            attention_mask=inputs[1],
+            training=training
+        )
         output_hidden_states = output_hidden_states[-2]
         concat_hidden_states = tf.concat(
             output_hidden_states[-1:], axis=-1
