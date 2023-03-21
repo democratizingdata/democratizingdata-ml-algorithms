@@ -569,53 +569,53 @@ class NERModel_pytorch(bm.Model):
 
 
 if __name__ == "__main__":
-    # bm.train = train
-    # bm.validate = validate
-    # bm.main()
+    bm.train = train
+    bm.validate = validate
+    bm.main()
 
-    import src.data.kaggle_repository as kr
-    import src.evaluate.model as em
+    # import src.data.kaggle_repository as kr
+    # import src.evaluate.model as em
 
-    class MockRepo:
-        def __init__(self, df):
-            self.df = df
-        def get_validation_data(self):
-            return self.df
-        def copy(self):
-            return MockRepo(self.df.copy())
+    # class MockRepo:
+    #     def __init__(self, df):
+    #         self.df = df
+    #     def get_validation_data(self):
+    #         return self.df
+    #     def copy(self):
+    #         return MockRepo(self.df.copy())
 
-    config = {
-        "accum_for": 1,
-        "max_cores": 24,
-        "max_seq_len": 512,
-        "use_amp": True,
-        "learning_rate": 1e-5,
-        "model_path": "baseline",
-        "batch_size": 16,
-        "save_model": True,
+    # config = {
+    #     "accum_for": 1,
+    #     "max_cores": 24,
+    #     "max_seq_len": 512,
+    #     "use_amp": True,
+    #     "learning_rate": 1e-5,
+    #     "model_path": "baseline",
+    #     "batch_size": 16,
+    #     "save_model": True,
 
-        "epochs": 5,
-        "model_tokenizer_name": "distilbert-base-cased",
-        "tokenizer_call_kwargs": {
-            "max_length":512,
-            "truncation":True,
-            "is_split_into_words": True
-        },
-        "model_kwargs": {
-        },
-        "optimizer": "torch.optim.Adam",
-        "optimizer_kwargs": {
-        }
-    }
+    #     "epochs": 5,
+    #     "model_tokenizer_name": "distilbert-base-cased",
+    #     "tokenizer_call_kwargs": {
+    #         "max_length":512,
+    #         "truncation":True,
+    #         "is_split_into_words": True
+    #     },
+    #     "model_kwargs": {
+    #     },
+    #     "optimizer": "torch.optim.Adam",
+    #     "optimizer_kwargs": {
+    #     }
+    # }
 
-    print("getting")
-    repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
-    print("data retieved")
-    outs = em.evaluate_model(
-        repo.copy(),
-        NERModel_pytorch(),
-        config,
-    )
+    # print("getting")
+    # repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
+    # print("data retieved")
+    # outs = em.evaluate_model(
+    #     repo.copy(),
+    #     NERModel_pytorch(),
+    #     config,
+    # )
 
     # repository = resolve_repo("snippet-ner")
     # config = {
