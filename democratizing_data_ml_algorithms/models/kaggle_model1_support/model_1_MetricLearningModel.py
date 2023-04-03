@@ -28,9 +28,11 @@ class MetricLearningModel(tf.keras.Model):
         sequence_labels=None,
         mask_embeddings=None,
         nomask_embeddings=None,
-        use_only_mask=False
+        use_only_mask=False,
     ):
-        output_hidden_states = self.main_model(input_ids=inputs[0], attention_mask=inputs[1], training=training)[-2]
+        output_hidden_states = self.main_model(
+            input_ids=inputs[0], attention_mask=inputs[1], training=training
+        )[-2]
         concat_hidden_states = tf.concat(
             output_hidden_states[-1:], axis=-1
         )  # [B * K, T, F]
@@ -57,8 +59,12 @@ class MetricLearningModel(tf.keras.Model):
             attention_mask = tf.cast(inputs[1], concat_hidden_states.dtype)[
                 ..., None
             ]  # [B, T, 1]
-            normed_mask_embeddings = tf.nn.l2_normalize(mask_embeddings, axis=1)[..., None]
-            normed_nomask_embeddings = tf.nn.l2_normalize(nomask_embeddings, axis=1)[..., None]
+            normed_mask_embeddings = tf.nn.l2_normalize(mask_embeddings, axis=1)[
+                ..., None
+            ]
+            normed_nomask_embeddings = tf.nn.l2_normalize(nomask_embeddings, axis=1)[
+                ..., None
+            ]
             normed_hidden_states = tf.nn.l2_normalize(concat_hidden_states, axis=-1)
             mask_cosine_similarity = tf.matmul(
                 normed_hidden_states, normed_mask_embeddings
@@ -67,7 +73,9 @@ class MetricLearningModel(tf.keras.Model):
                 normed_hidden_states, normed_nomask_embeddings
             )  # [B, T, 1]
             mask_attentions = tf.nn.sigmoid(10.0 * mask_cosine_similarity)  # [B, T, 1]
-            nomask_attentions = tf.nn.sigmoid(10.0 * nomask_cosine_similarity)  # [B, T, 1]
+            nomask_attentions = tf.nn.sigmoid(
+                10.0 * nomask_cosine_similarity
+            )  # [B, T, 1]
 
             # average attention
             if use_only_mask:

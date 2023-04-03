@@ -180,8 +180,7 @@ def color_text_figure(tokens, colors_true, colors_pred):
 
 
 def merge_tokens_w_classifications(
-    tokens:List[str],
-    classifications:List[float]
+    tokens: List[str], classifications: List[float]
 ) -> List[Tuple[str, float]]:
     merged = []
     for token, classification in zip(tokens, classifications):
@@ -198,7 +197,7 @@ def is_special_token(token):
 
 def high_probablity_token_groups(
     tokens_classifications: List[Tuple[str, float]],
-    threshold:float=0.9,
+    threshold: float = 0.9,
 ) -> List[List[Tuple[str, float]]]:
 
     datasets = []
@@ -220,7 +219,9 @@ class NERModel_pytorch(bm.Model):
     lbl_to_id = {"O": 0, "B-DAT": 1, "I-DAT": 2}
     id_to_lbl = {v: k for k, v in lbl_to_id.items()}
 
-    def __init__(self,):
+    def __init__(
+        self,
+    ):
         self.nlp = spacy.load("en_core_web_sm")
 
     def get_model_objects(
@@ -231,7 +232,7 @@ class NERModel_pytorch(bm.Model):
 
         tokenizer = AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"],
-            **config.get("tokenizer_kwargs",{}),
+            **config.get("tokenizer_kwargs", {}),
         )
 
         collator = tfs.data.data_collator.DataCollatorForTokenClassification(
@@ -268,7 +269,6 @@ class NERModel_pytorch(bm.Model):
     def sentencize_text(self, text: str) -> List[str]:
         max_tokens = 10_000
 
-
         tokens = text.split()
         if len(tokens) > max_tokens:
             texts = [
@@ -302,13 +302,13 @@ class NERModel_pytorch(bm.Model):
         ng = torch.no_grad()
         ng.__enter__()
 
-        def infer_sample(text:str) -> str:
-            sents = self.sentencize_text(text) # List[List[str]]
+        def infer_sample(text: str) -> str:
+            sents = self.sentencize_text(text)  # List[List[str]]
             assert len(sents) > 0, "No sentences found in text"
 
             datasets = []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
-                batch=tokenizer(
+                batch = tokenizer(
                     [b.split() for b in _batch],
                     return_tensors="pt",
                     padding=True,
@@ -319,43 +319,42 @@ class NERModel_pytorch(bm.Model):
                 outputs = model(**batch)
 
                 # [batch, seq_len, 3]
-                classifications = torch.softmax(outputs.logits, dim=-1).detach().cpu().numpy()
+                classifications = (
+                    torch.softmax(outputs.logits, dim=-1).detach().cpu().numpy()
+                )
 
                 # [batch, seq_len]
                 # we're going to merge the B and I labels into one label and
                 # assume token continuity
                 token_classification = classifications[:, :, 1:].sum(axis=-1)
 
-                tokens = list(map(
-                    tokenizer.convert_ids_to_tokens,
-                    batch["input_ids"].cpu().numpy()
-                )) # [batch, seq_len]
+                tokens = list(
+                    map(
+                        tokenizer.convert_ids_to_tokens,
+                        batch["input_ids"].cpu().numpy(),
+                    )
+                )  # [batch, seq_len]
 
-                for sent, sent_classification in zip(
-                    tokens,
-                    token_classification
-                ):
-                    assert len(sent) == len(sent_classification), "Classification length mismatch"
-                    t_classifications = list(filterfalse(
-                        lambda x: is_special_token(x[0]),
-                        merge_tokens_w_classifications(
-                            sent,
-                            sent_classification
+                for sent, sent_classification in zip(tokens, token_classification):
+                    assert len(sent) == len(
+                        sent_classification
+                    ), "Classification length mismatch"
+                    t_classifications = list(
+                        filterfalse(
+                            lambda x: is_special_token(x[0]),
+                            merge_tokens_w_classifications(sent, sent_classification),
                         )
-                    ))
-
+                    )
 
                     detections = high_probablity_token_groups(
-                        t_classifications,
-                        threshold=config.get("threshold", 0.9)
-                    ) # List[List[Tuple[str, float]]]
+                        t_classifications, threshold=config.get("threshold", 0.9)
+                    )  # List[List[Tuple[str, float]]]
 
                     datasets.extend(detections)
 
-            return "|".join(list(map(
-                lambda x: " ".join(map(lambda y: y[0], x)),
-                datasets
-            )))
+            return "|".join(
+                list(map(lambda x: " ".join(map(lambda y: y[0], x)), datasets))
+            )
 
         if config.get("inference_progress_bar", False):
             tqdm.pandas()
@@ -364,7 +363,6 @@ class NERModel_pytorch(bm.Model):
             df["model_prediction"] = df["text"].apply(infer_sample)
 
         ng.__exit__(None, None, None)
-
 
         return df
 
@@ -484,7 +482,7 @@ class NERModel_pytorch(bm.Model):
                         training_logger.log_metric(
                             "learning_rate",
                             # scheduler.get_last_lr()[0],
-                            optimizer.state_dict()['param_groups'][0]['lr'],
+                            optimizer.state_dict()["param_groups"][0]["lr"],
                             step=step,
                         )
 
@@ -494,24 +492,28 @@ class NERModel_pytorch(bm.Model):
                             step=step,
                         )
 
-
                         training_logger.log_figure(
                             "worst_sample_from_batch",
                             color_text_figure(worst_tokens, worst_labels, worst_preds),
                             step=step,
                         )
 
-
                     model.eval()
                     total_loss, total_n = 0, 0
                     for i, batch in enumerate(
                         tqdm(
-                            repository.get_validation_data(batch_size=config["batch_size"]),
+                            repository.get_validation_data(
+                                batch_size=config["batch_size"]
+                            ),
                             desc=f"Testing Epoch {epoch}",
                         )
                     ):
                         batch = prepare_batch(
-                            tokenizer, collator, NERModel_pytorch.lbl_to_id, config, batch
+                            tokenizer,
+                            collator,
+                            NERModel_pytorch.lbl_to_id,
+                            config,
+                            batch,
                         )
                         batch = {k: v.to(device) for k, v in batch.items()}
                         outputs = model(**batch)

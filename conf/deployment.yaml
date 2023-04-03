@@ -1,0 +1,14 @@
+build: #
+  python: "pip"
+
+environments: #
+  icsr: #
+    workflows: #
+      - name: "ncses-data-inference" #
+        tasks:
+          - task_key: "regex-model-inference"
+            # example task payload
+            python_wheel_task:
+              package_name: "democratizing_data_ml_algorithms"
+              entry_point: "TODO"
+              parameters: [] # list of string arguments

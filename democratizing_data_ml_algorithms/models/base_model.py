@@ -12,7 +12,7 @@ from democratizing_data_ml_algorithms.data.repository_resolver import resolve_re
 import click
 
 
-VALID_REPOS = ["kaggle", "entity"]
+VALID_REPOS = ["kaggle", "entity", "snippet"]
 REPO_HELP_TEXT = (
     f"REPO indicates repository to use, valid options are: {','.join(VALID_REPOS)}"
 )
@@ -47,9 +47,9 @@ def flatten_hparams_for_logging(dictionary: Dict[str, Any]) -> Dict[str, Any]:
     flattened = {}
     for key, value in dictionary.items():
         if isinstance(value, dict):
-            flattened.update(flatten_hparams_for_logging(
-                {f"{key}:{k}":v for k,v in value.items()}
-            ))
+            flattened.update(
+                flatten_hparams_for_logging({f"{key}:{k}": v for k, v in value.items()})
+            )
         else:
             flattened[key] = value
     return flattened

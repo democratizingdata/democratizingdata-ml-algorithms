@@ -1,0 +1,15 @@
+{
+    "environments": {
+        "icsr": {
+            "profile": "democratizing_data_ml_algorithms",
+            "storage_type": "mlflow",
+            "properties": {
+                "workspace_directory": "/Shared/dbx/projects/democratizing_data-ml-algorithms",
+                "artifact_location": "dbfs:/dbx/democratizing_data-ml-algorithms"
+            }
+        }
+    },
+    "inplace_jinja_support": false,
+    "failsafe_cluster_reuse_with_assets": false,
+    "context_based_upload_for_execute": false
+}

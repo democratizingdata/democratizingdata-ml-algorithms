@@ -2,6 +2,7 @@ import math
 
 from tensorflow.keras.utils import Sequence
 
+
 class QueryDataLoader(Sequence):
     def __init__(self, data, batch_size=32):
         self.batch_size = batch_size

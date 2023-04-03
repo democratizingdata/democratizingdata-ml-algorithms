@@ -15,9 +15,16 @@ import transformers as tfs
 from democratizing_data_ml_algorithms.data.repository import Repository
 import democratizing_data_ml_algorithms.models.base_model as bm
 
-from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_QueryDataLoader import QueryDataLoader
-from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_SupportQueryDataLoader import SupportQueryDataLoader
-from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_MetricLearningModel_static import MetricLearningModel
+from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_QueryDataLoader import (
+    QueryDataLoader,
+)
+from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_SupportQueryDataLoader import (
+    SupportQueryDataLoader,
+)
+from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_MetricLearningModel_static import (
+    MetricLearningModel,
+)
+
 
 def train(
     repository: Repository,
@@ -31,7 +38,6 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
     pass
 
 
-
 class KaggleModel1(bm.Model):
     def __init__(self) -> None:
         self.nlp = spacy.load("en_core_web_sm")
@@ -43,8 +49,9 @@ class KaggleModel1(bm.Model):
         config: Dict[str, Any],
         exp_logger: bm.SupportsLogging,
     ) -> None:
-        raise NotImplementedError("This class only runs pretrained models from the competition.")
-
+        raise NotImplementedError(
+            "This class only runs pretrained models from the competition."
+        )
 
     def sentencize_text(self, text: str) -> List[str]:
         max_tokens = 10_000
@@ -70,10 +77,9 @@ class KaggleModel1(bm.Model):
 
         return sents
 
+    def get_support_mask_embed(self, path: str, n_samples: int) -> np.ndarray:
 
-    def get_support_mask_embed(self, path:str, n_samples:int) -> np.ndarray:
-
-        support_tokens = np.load(path) #[n, embed_dim]
+        support_tokens = np.load(path)  # [n, embed_dim]
 
         # print("getting", n_samples, "from", path, support_tokens.shape)
 
@@ -88,54 +94,59 @@ class KaggleModel1(bm.Model):
         #     keepdims=True,
         # )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
 
-
         return support_tokens
 
-
-    def slice_up_samples(self, seq_len:int, row:pd.DataFrame) -> Dict[str, str]:
+    def slice_up_samples(self, seq_len: int, row: pd.DataFrame) -> Dict[str, str]:
         tokens = row["text"].replace("\n", " ").split()
 
-        split_up = [" ".join(tokens[i * seq_len: (i+1) * seq_len]) for i in range(len(tokens)//seq_len)]
+        split_up = [
+            " ".join(tokens[i * seq_len : (i + 1) * seq_len])
+            for i in range(len(tokens) // seq_len)
+        ]
 
         return dict(
-            id = [row["id"]] * len(split_up),
-            text = split_up,
+            id=[row["id"]] * len(split_up),
+            text=split_up,
         )
 
-    def _slice_up_text(self, seq_len:int, text:str) -> List[str]:
+    def _slice_up_text(self, seq_len: int, text: str) -> List[str]:
         tokens = text.replace("\n", " ").split()
 
-        split_up = [" ".join(tokens[i * seq_len: (i+1) * seq_len]) for i in range(len(tokens)//seq_len)]
+        split_up = [
+            " ".join(tokens[i * seq_len : (i + 1) * seq_len])
+            for i in range(len(tokens) // seq_len)
+        ]
 
         return split_up
 
-
     def is_special_token(token):
         return (
-            token.startswith("[") and token.endswith("]")
-            or token.startswith("<") and token.endswith(">")
+            token.startswith("[")
+            and token.endswith("]")
+            or token.startswith("<")
+            and token.endswith(">")
         )
-
 
     def merge_tokens_w_classifications(
         self,
-        tokens:List[str],
-        token_should_be_merged:List[bool],
-        classifications:List[float]
+        tokens: List[str],
+        token_should_be_merged: List[bool],
+        classifications: List[float],
     ) -> List[Tuple[str, float]]:
         merged = []
-        for token, do_merge, classification in zip(tokens, token_should_be_merged, classifications):
+        for token, do_merge, classification in zip(
+            tokens, token_should_be_merged, classifications
+        ):
             if do_merge:
                 merged[-1] = (merged[-1][0] + token, merged[-1][1])
             else:
                 merged.append((token, classification))
         return merged
 
-
     def high_probablity_token_groups(
         self,
         tokens_classifications: List[Tuple[str, float]],
-        threshold:float=0.9,
+        threshold: float = 0.9,
     ) -> List[List[Tuple[str, float]]]:
 
         datasets = []
@@ -153,35 +164,46 @@ class KaggleModel1(bm.Model):
 
         return datasets
 
-
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
         if self.model is None:
-            model_config = tfs.AutoConfig.from_pretrained(config["model_tokenizer_name"])
+            model_config = tfs.AutoConfig.from_pretrained(
+                config["model_tokenizer_name"]
+            )
             model_config.output_attentions = True
             model_config.output_hidden_states = True
 
             ll_model = tfs.TFAutoModel.from_config(config=model_config)
-            model = MetricLearningModel(config=model_config, name="metric_learning_model")
+            model = MetricLearningModel(
+                config=model_config, name="metric_learning_model"
+            )
             model.main_model = ll_model
             model.K = 3
 
-            self.tokenizer = tfs.AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
-            self.tokenizer_special_tokens = set(self.tokenizer.special_tokens_map.values())
+            self.tokenizer = tfs.AutoTokenizer.from_pretrained(
+                config["model_tokenizer_name"]
+            )
+            self.tokenizer_special_tokens = set(
+                self.tokenizer.special_tokens_map.values()
+            )
             mask_embedding = self.get_support_mask_embed(
                 config["support_mask_embedding_path"],
                 config["n_support_samples"],
-            ) # [n,     embed_dim]
+            )  # [n,     embed_dim]
 
             no_mask_embedding = self.get_support_mask_embed(
                 config["support_no_mask_embedding_path"],
                 config["n_support_samples"],
-            ) # [n,     embed_dim]
+            )  # [n,     embed_dim]
 
             # empty mock values are passed to the model to build the tensorflow
             # graph. We don't need the outputs
-            mock_input_ids = np.zeros([config["batch_size"], config["seq_len"]], dtype=np.int32)
-            mock_attention_mask = np.zeros([config["batch_size"], config["seq_len"]], dtype=np.int32)
+            mock_input_ids = np.zeros(
+                [config["batch_size"], config["seq_len"]], dtype=np.int32
+            )
+            mock_attention_mask = np.zeros(
+                [config["batch_size"], config["seq_len"]], dtype=np.int32
+            )
             _ = model(
                 [
                     mock_input_ids,
@@ -196,7 +218,6 @@ class KaggleModel1(bm.Model):
             weights_path = glob.glob(os.path.join(config["weights_path"], "*.h5"))[0]
             model.load_weights(weights_path, by_name=True)
             self.model = tf.function(model, experimental_relax_shapes=True)
-
 
         if config.get("is_roberta", False):
             print("Merging tokens based on Roberta tokenizer")
@@ -229,24 +250,22 @@ class KaggleModel1(bm.Model):
                         np.arange(mask_embedding.shape[0]),
                         config["n_support_samples"],
                     ),
-                    ...
-                ].mean(axis=0, keepdims=True) # [1, embed_dim]
+                    ...,
+                ].mean(
+                    axis=0, keepdims=True
+                )  # [1, embed_dim]
 
                 batch_no_mask_embeddings = no_mask_embedding[
                     np.random.choice(
                         np.arange(no_mask_embedding.shape[0]),
                         config["n_support_samples"],
                     ),
-                    ...
-                ].mean(axis=0, keepdims=True) # [1, embed_dim]
+                    ...,
+                ].mean(
+                    axis=0, keepdims=True
+                )  # [1, embed_dim]
 
-
-                (
-                    _,
-                    _,
-                    _,
-                    attention_values
-                ) = self.model(
+                (_, _, _, attention_values) = self.model(
                     [
                         tokenized_batch["input_ids"],
                         tokenized_batch["attention_mask"],
@@ -257,30 +276,35 @@ class KaggleModel1(bm.Model):
                     nomask_embeddings=batch_no_mask_embeddings,
                 )
 
-                tokens = list(map(
-                    self.tokenizer.convert_ids_to_tokens,
-                    tokenized_batch["input_ids"].numpy()
-                ))
+                tokens = list(
+                    map(
+                        self.tokenizer.convert_ids_to_tokens,
+                        tokenized_batch["input_ids"].numpy(),
+                    )
+                )
 
                 for sent, sent_classification in zip(
                     tokens,
-                    attention_values.numpy()[...,0],
+                    attention_values.numpy()[..., 0],
                 ):
-                    assert len(sent) == len(sent_classification), f"Classification length mismatch {len(sent)} != {len(sent_classification)}"
+                    assert len(sent) == len(
+                        sent_classification
+                    ), f"Classification length mismatch {len(sent)} != {len(sent_classification)}"
 
-                    tokens_classifications = list(filterfalse(
-                        lambda x: x[0] in self.tokenizer_special_tokens,
-                        self.merge_tokens_w_classifications(
-                            list(map(clean, sent)),
-                            list(map(should_merge, sent)),
-                            sent_classification,
+                    tokens_classifications = list(
+                        filterfalse(
+                            lambda x: x[0] in self.tokenizer_special_tokens,
+                            self.merge_tokens_w_classifications(
+                                list(map(clean, sent)),
+                                list(map(should_merge, sent)),
+                                sent_classification,
+                            ),
                         )
-                    ))
+                    )
 
                     detections = self.high_probablity_token_groups(
-                        tokens_classifications,
-                        threshold=config.get("threshold", 0.9)
-                    ) # List[List[Tuple[str, float]]]
+                        tokens_classifications, threshold=config.get("threshold", 0.9)
+                    )  # List[List[Tuple[str, float]]]
 
                     datasets.extend(detections)
 
@@ -294,11 +318,11 @@ class KaggleModel1(bm.Model):
 
         return df
 
+
 if __name__ == "__main__":
     bm.train = train
     bm.validate = validate
     bm.main()
-
 
     # import src.data.kaggle_repository as kr
     # import src.evaluate.model as em
@@ -334,8 +358,6 @@ if __name__ == "__main__":
     #     seq_len = 320,
     #     is_roberta = False,
     # )
-
-
 
     # model = KaggleModel1()
 
