@@ -5,10 +5,10 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-import src.evaluate.model as em
-from src.data.repository import Repository
-from src.models.base_model import Model, SupportsLogging
-from src.models.regex_model import RegexModel
+import democratizing_data_ml_algorithms.evaluate.model as em
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.models.base_model import Model, SupportsLogging
+from democratizing_data_ml_algorithms.models.regex_model import RegexModel
 
 logger = logging.getLogger("RegexModel")
 

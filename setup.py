@@ -10,9 +10,9 @@ def read(fname):
 
 
 setup(
-    name="src",
-    version="0.0.0",
-    author="See AUTHORS file",
+    name="democratizing_data_ml_algorithms",
+    version="0.0.1",
+    author="Ryan Hausen and Contributors",
     packages=find_packages(),
     include_package_data=True,
 )

@@ -25,10 +25,10 @@ from tqdm import trange
 from scipy.special import expit, softmax
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
 
-from src.data.repository import Repository
-import src.models.base_model as bm
-import src.evaluate.model as em
-import src.models.schwartz_hearst_model as shm
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
+import democratizing_data_ml_algorithms.evaluate.model as em
+import democratizing_data_ml_algorithms.models.schwartz_hearst_model as shm
 
 logger = logging.getLogger("KaggleModel2")
 

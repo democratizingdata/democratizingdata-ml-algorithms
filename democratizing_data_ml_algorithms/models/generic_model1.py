@@ -28,8 +28,8 @@ from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
 
 
-from src.data.repository import Repository
-import src.models.base_model as bm
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
 
 logger = logging.getLogger("token_classification_model")
 

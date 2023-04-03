@@ -93,9 +93,9 @@ from typing import (
 import pandas as pd
 from tqdm import tqdm
 
-from src.data.repository import Repository
-import src.models.base_model as bm
-import src.evaluate.model as em
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
+import democratizing_data_ml_algorithms.evaluate.model as em
 
 logger = logging.getLogger("kaggle_model3")
 

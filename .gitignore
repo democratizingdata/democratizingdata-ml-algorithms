@@ -2,6 +2,13 @@
 data/kaggle/
 mlruns/
 data/snippets/
+data/spacy/
+models/generic_model1/baseline/
+models/kaggle_model1/
+models/kaggle_model2/
+models/kaggle_model3/
+models/ner_model/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

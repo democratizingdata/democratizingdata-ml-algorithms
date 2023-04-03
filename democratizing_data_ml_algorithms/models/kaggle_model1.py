@@ -12,12 +12,12 @@ import tensorflow as tf
 from tqdm import tqdm
 import transformers as tfs
 
-from src.data.repository import Repository
-import src.models.base_model as bm
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
 
-from src.models.kaggle_model1_support.model_1_QueryDataLoader import QueryDataLoader
-from src.models.kaggle_model1_support.model_1_SupportQueryDataLoader import SupportQueryDataLoader
-from src.models.kaggle_model1_support.model_1_MetricLearningModel_static import MetricLearningModel
+from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_QueryDataLoader import QueryDataLoader
+from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_SupportQueryDataLoader import SupportQueryDataLoader
+from democratizing_data_ml_algorithms.models.kaggle_model1_support.model_1_MetricLearningModel_static import MetricLearningModel
 
 def train(
     repository: Repository,
@@ -295,19 +295,21 @@ class KaggleModel1(bm.Model):
         return df
 
 if __name__ == "__main__":
-    # bm.train = train
-    # bm.validate = validate
-    # bm.main()
-    import src.data.kaggle_repository as kr
-    import src.evaluate.model as em
+    bm.train = train
+    bm.validate = validate
+    bm.main()
 
-    class MockRepo:
-        def __init__(self, df):
-            self.df = df
-        def get_validation_data(self):
-            return self.df
-        def copy(self):
-            return MockRepo(self.df.copy())
+
+    # import src.data.kaggle_repository as kr
+    # import src.evaluate.model as em
+
+    # class MockRepo:
+    #     def __init__(self, df):
+    #         self.df = df
+    #     def get_validation_data(self):
+    #         return self.df
+    #     def copy(self):
+    #         return MockRepo(self.df.copy())
 
     # biomed roberta model config
     # config = dict(
@@ -322,29 +324,29 @@ if __name__ == "__main__":
     # )
 
     # scibert model config
-    config = dict(
-        support_mask_embedding_path = "models/kaggle_model1/sub_scibert/embeddings/support_mask_embeddings.npy",
-        support_no_mask_embedding_path = "models/kaggle_model1/sub_scibert/embeddings/support_nomask_embeddings.npy",
-        n_support_samples = 100,
-        model_tokenizer_name = "models/kaggle_model1/sub_scibert",
-        weights_path = "models/kaggle_model1/sub_scibert/embeddings",
-        batch_size = 128,
-        seq_len = 320,
-        is_roberta = False,
-    )
+    # config = dict(
+    #     support_mask_embedding_path = "models/kaggle_model1/sub_scibert/embeddings/support_mask_embeddings.npy",
+    #     support_no_mask_embedding_path = "models/kaggle_model1/sub_scibert/embeddings/support_nomask_embeddings.npy",
+    #     n_support_samples = 100,
+    #     model_tokenizer_name = "models/kaggle_model1/sub_scibert",
+    #     weights_path = "models/kaggle_model1/sub_scibert/embeddings",
+    #     batch_size = 128,
+    #     seq_len = 320,
+    #     is_roberta = False,
+    # )
 
 
 
-    model = KaggleModel1()
+    # model = KaggleModel1()
 
-    sample = kr.KaggleRepository().get_training_sample_by_id(
-        "3af0a4ad-2fd3-430f-880b-c0c8c1b097e1"
-    )
-    # sample["text"] = sample["text"]
+    # sample = kr.KaggleRepository().get_training_sample_by_id(
+    #     "3af0a4ad-2fd3-430f-880b-c0c8c1b097e1"
+    # )
+    # # sample["text"] = sample["text"]
 
-    outs = KaggleModel1().inference(config, sample)
+    # outs = KaggleModel1().inference(config, sample)
 
-    print(outs)
+    # print(outs)
 
     # repo = MockRepo(next(kr.KaggleRepository().get_validation_data(batch_size=32)))
 

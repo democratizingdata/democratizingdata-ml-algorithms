@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional, Protocol
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from src.data.entity_repository import EntityRepository
+from democratizing_data_ml_algorithms.data.entity_repository import EntityRepository
 
-from src.data.repository import Repository
-from src.data.repository_resolver import resolve_repo
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.data.repository_resolver import resolve_repo
 
 
 import click

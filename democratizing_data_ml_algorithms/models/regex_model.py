@@ -12,9 +12,9 @@ from pandarallel import pandarallel
 from unidecode import unidecode
 from tqdm import tqdm
 
-from src.data.repository import Repository
-from src.models.base_model import Model, SupportsLogging
-import src.evaluate.model as em
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.models.base_model import Model, SupportsLogging
+import democratizing_data_ml_algorithms.evaluate.model as em
 
 logger = logging.getLogger("RegexModel")
 

@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
 
-from src.data.repository import Repository
+from democratizing_data_ml_algorithms.data.repository import Repository
 
 logger = logging.getLogger("entity_repository")
 

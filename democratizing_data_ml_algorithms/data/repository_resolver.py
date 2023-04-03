@@ -1,4 +1,4 @@
-from src.data.repository import Repository
+from democratizing_data_ml_algorithms.data.repository import Repository
 
 VALID_REPOS = ["kaggle", "entity"]
 REPO_HELP_TEXT = (
@@ -8,15 +8,15 @@ REPO_HELP_TEXT = (
 
 def resolve_repo(repo_name: str) -> Repository:
     if repo_name == "kaggle":
-        from src.data.kaggle_repository import KaggleRepository
+        from democratizing_data_ml_algorithms.data.kaggle_repository import KaggleRepository
 
         return KaggleRepository()
     elif repo_name == "entity":
-        from src.data.entity_repository import EntityRepository
+        from democratizing_data_ml_algorithms.data.entity_repository import EntityRepository
 
         return EntityRepository()
     elif "snippet" in repo_name:
-        from src.data.snippet_repository import SnippetRepository
+        from democratizing_data_ml_algorithms.data.snippet_repository import SnippetRepository
 
         return SnippetRepository(repo_name.split("-")[1])
     else:

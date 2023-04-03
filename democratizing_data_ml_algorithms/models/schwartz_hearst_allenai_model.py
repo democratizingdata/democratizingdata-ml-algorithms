@@ -12,9 +12,9 @@ import pandas as pd
 import spacy
 
 
-from src.data.repository import Repository
-from src.models.base_model import Model
-from src.models.schwartz_hearst_allenai import (
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.models.base_model import Model
+from democratizing_data_ml_algorithms.models.schwartz_hearst_allenai import (
     AbbreviationDetector,
     extract_abbreviation_definition_pairs,
 )
