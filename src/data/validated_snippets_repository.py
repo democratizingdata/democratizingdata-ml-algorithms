@@ -10,3 +10,5 @@ class SnippetRepositoryMode(Enum):
 
 
 class ValidatedSnippetsRepository(Repository):
+    def __init__(self, mode: SnippetRepositoryMode):
+        self.mode = mode
