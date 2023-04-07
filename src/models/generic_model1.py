@@ -326,13 +326,14 @@ def masked_mean(
 
     return masked_arr.sum(axis=axis, keepdim=keepdim) / n
 
+
 def merge_tokens_w_classifications(
-    tokens:List[str],
-    token_should_be_merged:List[bool],
-    classifications:List[float]
+    tokens: List[str], token_should_be_merged: List[bool], classifications: List[float]
 ) -> List[Tuple[str, float]]:
     merged = []
-    for token, do_merge, classification in zip(tokens, token_should_be_merged, classifications):
+    for token, do_merge, classification in zip(
+        tokens, token_should_be_merged, classifications
+    ):
         if do_merge:
             merged[-1] = (merged[-1][0] + token, merged[-1][1])
         else:
@@ -342,15 +343,16 @@ def merge_tokens_w_classifications(
 
 def is_special_token(token):
     return (
-        token.startswith("[") and token.endswith("]")
-        or token.startswith("<") and token.endswith(">")
+        token.startswith("[")
+        and token.endswith("]")
+        or token.startswith("<")
+        and token.endswith(">")
     )
-
 
 
 def high_probablity_token_groups(
     tokens_classifications: List[Tuple[str, float]],
-    threshold:float=0.9,
+    threshold: float = 0.9,
 ) -> List[List[Tuple[str, float]]]:
 
     datasets = []
@@ -366,6 +368,7 @@ def high_probablity_token_groups(
         datasets.append(dataset)
 
     return datasets
+
 
 class GenericModel1(bm.Model):
     blk_grn = mcolors.LinearSegmentedColormap.from_list(
@@ -410,16 +413,10 @@ class GenericModel1(bm.Model):
         if os.path.exists(config["model_tokenizer_name"]):
             print(
                 "Loading pretrained linear layer from:",
-                os.path.join(
-                    config["model_tokenizer_name"],
-                    "linear.bin"
-                )
+                os.path.join(config["model_tokenizer_name"], "linear.bin"),
             )
             linear.load_state_dict(
-                torch.load(os.path.join(
-                    config["model_tokenizer_name"],
-                    "linear.bin"
-                )),
+                torch.load(os.path.join(config["model_tokenizer_name"], "linear.bin")),
                 strict=True,
             )
 
@@ -429,7 +426,7 @@ class GenericModel1(bm.Model):
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
                 list(model.parameters()) + list(linear.parameters()),
-                **config.get("optimizer_kwargs", {})
+                **config.get("optimizer_kwargs", {}),
             )
 
             if "scheduler" in config:
@@ -494,39 +491,37 @@ class GenericModel1(bm.Model):
 
         return sents
 
-    def get_support_mask_embed(self, path:str, n_samples:int) -> np.ndarray:
+    def get_support_mask_embed(self, path: str, n_samples: int) -> np.ndarray:
 
-        support_tokens = np.load(path) #[n, embed_dim]
+        support_tokens = np.load(path)  # [n, embed_dim]
 
         # print("getting", n_samples, "from", path, support_tokens.shape)
 
-        sample_idxs = np.random.choice(
-            np.arange(support_tokens.shape[0]),
-            n_samples
-        )
+        sample_idxs = np.random.choice(np.arange(support_tokens.shape[0]), n_samples)
 
         support_tokens = np.mean(
-            support_tokens[sample_idxs, :], # [n, embed_dim]
+            support_tokens[sample_idxs, :],  # [n, embed_dim]
             axis=0,
             keepdims=True,
-        )[np.newaxis, ...].astype(np.float32) # [1, 1, embed_dim]
-
+        )[np.newaxis, ...].astype(
+            np.float32
+        )  # [1, 1, embed_dim]
 
         return support_tokens
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-                                                             # [batch, token, embed_dim]
+        # [batch, token, embed_dim]
         mask_embedding = self.get_support_mask_embed(
             config["support_mask_embedding_path"],
             config["n_support_samples"],
-        ) # [1,     1,     embed_dim]
+        )  # [1,     1,     embed_dim]
 
         no_mask_embedding = self.get_support_mask_embed(
             config["support_no_mask_embedding_path"],
             config["n_support_samples"],
-        ) # [1,     1,     embed_dim]
+        )  # [1,     1,     embed_dim]
 
         if config.get("is_roberta", False):
             print("Merging tokens based on Roberta tokenizer")
@@ -537,8 +532,9 @@ class GenericModel1(bm.Model):
             should_merge = lambda t: t.startswith("##")
             clean = lambda t: t.replace("##", "")
 
-
-        model, linear, tokenizer, _ = self.get_model_objects(config, include_optimizer=False)
+        model, linear, tokenizer, _ = self.get_model_objects(
+            config, include_optimizer=False
+        )
 
         model.to(device)
         linear.to(device)
@@ -549,8 +545,9 @@ class GenericModel1(bm.Model):
 
         masked_embedding = torch.from_numpy(mask_embedding).to(device)
         no_mask_embedding = torch.from_numpy(no_mask_embedding).to(device)
-        def infer_sample(text:str) -> str:
-            sents = self.sentencize_text(text) # List[List[str]]
+
+        def infer_sample(text: str) -> str:
+            sents = self.sentencize_text(text)  # List[List[str]]
             assert len(sents) > 0, "No sentences found in text"
 
             datasets = []
@@ -565,7 +562,6 @@ class GenericModel1(bm.Model):
                 #     config["n_support_samples"],
                 # )).to(device) # [1,     1,     embed_dim]
 
-
                 batch = tokenizer(
                     [b.split() for b in _batch],
                     return_tensors="pt",
@@ -575,17 +571,23 @@ class GenericModel1(bm.Model):
 
                 batch = batch.to(device)
                 outputs = model(**batch)
-                output_embedding = linear(outputs.last_hidden_state) # [batch, token, embed_dim]
+                output_embedding = linear(
+                    outputs.last_hidden_state
+                )  # [batch, token, embed_dim]
                 cos_sim = torch.nn.functional.cosine_similarity(
                     output_embedding, masked_embedding, dim=-1
-                ) # [batch, token]
-                token_classification = torch.nn.functional.sigmoid(cos_sim * 10) # [batch, token]
+                )  # [batch, token]
+                token_classification = torch.nn.functional.sigmoid(
+                    cos_sim * 10
+                )  # [batch, token]
 
                 cos_sim_non = torch.nn.functional.cosine_similarity(
                     output_embedding, no_mask_embedding, dim=-1
-                ) # [batch, token]
+                )  # [batch, token]
                 scale_cos_sim = cos_sim_non * 10
-                _token_non_classification = torch.nn.functional.sigmoid(scale_cos_sim) # [batch, token]
+                _token_non_classification = torch.nn.functional.sigmoid(
+                    scale_cos_sim
+                )  # [batch, token]
 
                 # token_non_classification = 1 - torch.nn.functional.sigmoid(
                 #     torch.nn.functional.cosine_similarity(
@@ -595,46 +597,53 @@ class GenericModel1(bm.Model):
 
                 # Not sure why they do this  ===================================
                 # This isn't documented in the paper, but it's in the code
-                token_classification = token_classification.cpu().numpy() # [batch, token]
-                token_non_classification = 1 - _token_non_classification.cpu().numpy() # [batch, token]
-                merged_classifications = 0.5 * (token_classification + token_non_classification)
+                token_classification = (
+                    token_classification.cpu().numpy()
+                )  # [batch, token]
+                token_non_classification = (
+                    1 - _token_non_classification.cpu().numpy()
+                )  # [batch, token]
+                merged_classifications = 0.5 * (
+                    token_classification + token_non_classification
+                )
                 # merged_classifications = token_classification
 
-                merged_classifications = merged_classifications# * batch.attention_mask.cpu().numpy()
+                merged_classifications = (
+                    merged_classifications  # * batch.attention_mask.cpu().numpy()
+                )
                 # Not sure why they do this  ===================================
 
+                tokens = list(
+                    map(
+                        tokenizer.convert_ids_to_tokens,
+                        batch["input_ids"].cpu().numpy(),
+                    )
+                )  # [batch, token]
 
-                tokens = list(map(
-                    tokenizer.convert_ids_to_tokens,
-                    batch["input_ids"].cpu().numpy()
-                )) # [batch, token]
-
-                for sent, sent_classification in zip(
-                    tokens,
-                    merged_classifications
-                ):
-                    assert len(sent) == len(sent_classification), f"Classification length mismatch {len(sent)} != {len(sent_classification)}"
-                    tokens_classifications = list(filterfalse(
-                        lambda x: is_special_token(x[0]),
-                        merge_tokens_w_classifications(
-                            list(map(clean, sent)),
-                            list(map(should_merge, sent)),
-                            sent_classification,
+                for sent, sent_classification in zip(tokens, merged_classifications):
+                    assert len(sent) == len(
+                        sent_classification
+                    ), f"Classification length mismatch {len(sent)} != {len(sent_classification)}"
+                    tokens_classifications = list(
+                        filterfalse(
+                            lambda x: is_special_token(x[0]),
+                            merge_tokens_w_classifications(
+                                list(map(clean, sent)),
+                                list(map(should_merge, sent)),
+                                sent_classification,
+                            ),
                         )
-                    ))
+                    )
 
                     detections = high_probablity_token_groups(
-                        tokens_classifications,
-                        threshold=config.get("threshold", 0.9)
-                    ) # List[List[Tuple[str, float]]]
+                        tokens_classifications, threshold=config.get("threshold", 0.9)
+                    )  # List[List[Tuple[str, float]]]
 
                     datasets.extend(detections)
 
-            return "|".join(list(map(
-                lambda x: " ".join(map(lambda y: y[0], x)),
-                datasets
-            )))
-
+            return "|".join(
+                list(map(lambda x: " ".join(map(lambda y: y[0], x)), datasets))
+            )
 
         if config.get("inference_progress_bar", False):
             tqdm.pandas()
@@ -730,7 +739,9 @@ class GenericModel1(bm.Model):
                     output_support.last_hidden_state
                 )  # [bs, seq_len, emb_dim]
                 # might be support_hidden_states = output_support.hidden_states[-1]
-                support_linear_embedding = linear(support_hidden_states)  # [bs, seq_len, emb_dim]
+                support_linear_embedding = linear(
+                    support_hidden_states
+                )  # [bs, seq_len, emb_dim]
 
                 # the first token is the CLS token which is the support embedding
                 support_embedding = support_hidden_states[:, 0, :]  # [bs, emb_dim]
@@ -762,7 +773,9 @@ class GenericModel1(bm.Model):
                     output_query.last_hidden_state
                 )  # [bq, seq_len, emb_dim]
                 # might be query_hidden_states = output_query.hidden_states[-1]
-                query_linear_embedding = linear(query_hidden_states)  # [bq, seq_len, emb_dim]
+                query_linear_embedding = linear(
+                    query_hidden_states
+                )  # [bq, seq_len, emb_dim]
 
                 label_embedding = masked_mean(
                     query_linear_embedding,
@@ -949,8 +962,7 @@ class GenericModel1(bm.Model):
                         model.save_pretrained(save_path)
                         tokenizer.save_pretrained(save_path)
                         torch.save(
-                            linear.state_dict(),
-                            os.path.join(save_path, "linear.pt")
+                            linear.state_dict(), os.path.join(save_path, "linear.pt")
                         )
 
                     with training_logger.train():
@@ -1111,7 +1123,9 @@ class GenericModel1(bm.Model):
                         support_hidden_states = (
                             output_support.last_hidden_state
                         )  # [bs, seq_len, emb_dim]
-                        support_linear_embedding = linear(support_hidden_states) # [bs, seq_len, emb_dim]
+                        support_linear_embedding = linear(
+                            support_hidden_states
+                        )  # [bs, seq_len, emb_dim]
 
                         support_embedding = support_hidden_states[
                             :, 0, :
@@ -1139,7 +1153,9 @@ class GenericModel1(bm.Model):
                         query_hidden_states = (
                             output_query.last_hidden_state
                         )  # [bq, seq_len, emb_dim]
-                        query_linear_embedding = linear(query_hidden_states) # [bq, seq_len, emb_dim]
+                        query_linear_embedding = linear(
+                            query_hidden_states
+                        )  # [bq, seq_len, emb_dim]
 
                         label_embedding = masked_mean(
                             query_linear_embedding,
@@ -1421,7 +1437,6 @@ if __name__ == "__main__":
     #         return self.df
     #     def copy(self):
     #         return MockRepo(self.df.copy())
-
 
     # model_name = "biomed_roberta"
     # config = dict(

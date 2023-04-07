@@ -25,7 +25,7 @@ from transformers import (
     BertTokenizerFast,
     DistilBertTokenizerFast,
     RobertaTokenizerFast,
-    TFAutoModel
+    TFAutoModel,
 )
 from tqdm import tqdm
 
@@ -35,18 +35,22 @@ Document = List[Dict[str, str]]
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 # https://www.tensorflow.org/api_docs/python/tf/keras/utils/disable_interactive_logging
 # tf.keras.utils.disable_interactive_logging()
-tf.get_logger().setLevel('ERROR')
+tf.get_logger().setLevel("ERROR")
 physical_devices = tf.config.list_physical_devices("GPU")
 for i in range(len(physical_devices)):
     tf.config.experimental.set_memory_growth(physical_devices[i], True)
 
 from src.models.kaggle_model1_support.model_1_QueryDataLoader import QueryDataLoader
-from src.models.kaggle_model1_support.model_1_MetricLearningModel_static import MetricLearningModel
-from src.models.kaggle_model1_support.model_1_SupportQueryDataLoader import SupportQueryDataLoader
+from src.models.kaggle_model1_support.model_1_MetricLearningModel_static import (
+    MetricLearningModel,
+)
+from src.models.kaggle_model1_support.model_1_SupportQueryDataLoader import (
+    SupportQueryDataLoader,
+)
 
-nltk.download('stopwords', quiet=True)
-nltk.download('punkt', quiet=True)
-stop_words = set(stopwords.words('english'))
+nltk.download("stopwords", quiet=True)
+nltk.download("punkt", quiet=True)
+stop_words = set(stopwords.words("english"))
 
 tf.random.set_seed(42)
 random.seed(42)
@@ -54,19 +58,23 @@ np.random.seed(42)
 
 # Some of the code is too chatty if you wrap it in this, then it redirect the
 # print statements to a black hole
-#https://stackoverflow.com/a/54955536
+# https://stackoverflow.com/a/54955536
 from contextlib import contextmanager
+
+
 @contextmanager
 def stdout_redirector():
     class MyStream:
         def write(self, msg):
             pass
+
         def flush(self):
             pass
+
     old_stdout = sys.stdout
     old_stderr = sys.stderr
-#     sys.stdout = MyStream()
-#     sys.stderr = MyStream()
+    #     sys.stdout = MyStream()
+    #     sys.stderr = MyStream()
 
     try:
         yield
@@ -74,8 +82,8 @@ def stdout_redirector():
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 
-class Model1():
 
+class Model1:
     def __init__(self, win_size, sequence_legnth) -> None:
         self.win_size = win_size
         self.sequence_length = sequence_legnth
@@ -89,9 +97,7 @@ class Model1():
         for ft in full_text:
 
             st_end = generate_s_e_window_sliding(
-                len(ft),
-                self.win_size,
-                int(0.75*self.win_size)
+                len(ft), self.win_size, int(0.75 * self.win_size)
             )
 
             for start, end in st_end:
@@ -99,9 +105,8 @@ class Model1():
 
         test_df["text"] = sents
 
-
         test_df["id"] = ["-1"] * len(sents)
-        test_df["label"] = ["unknow"] * len(sents) # (sic)
+        test_df["label"] = ["unknow"] * len(sents)  # (sic)
         test_df["unique_id"] = ["-1"] * len(sents)
 
         full_text = " ".join(list(chain.from_iterable(filter(lambda x: x, full_text))))
@@ -112,7 +117,6 @@ class Model1():
 
         return pd.DataFrame(test_df)
 
-
     def batch_preprocess_single(self, text: Document):
         test_df = dict()
 
@@ -121,9 +125,7 @@ class Model1():
         for ft in full_text:
 
             st_end = generate_s_e_window_sliding(
-                len(ft),
-                self.win_size,
-                int(0.75*self.win_size)
+                len(ft), self.win_size, int(0.75 * self.win_size)
             )
 
             for start, end in st_end:
@@ -132,7 +134,7 @@ class Model1():
         test_df["text"] = sents
         ids = [text[0]["id"]] * len(sents)
         test_df["id"] = ids
-        test_df["label"] = ["unknow"] * len(sents) # (sic)
+        test_df["label"] = ["unknow"] * len(sents)  # (sic)
 
         full_text = " ".join(list(chain.from_iterable(filter(lambda x: x, full_text))))
 
@@ -142,14 +144,8 @@ class Model1():
 
         return pd.DataFrame(test_df)
 
-
-
-
     def batch_preprocess(self, text: List[Document]):
-        results = list(map(
-            self.batch_preprocess_single,
-            tqdm(text)
-        ))
+        results = list(map(self.batch_preprocess_single, tqdm(text)))
 
         ids = []
         texts = []
@@ -172,49 +168,49 @@ class Model1():
 
         return test_df
 
-
-    def batch_predict(self, inputs:pd.DataFrame, batch_size:int=128) -> pd.DataFrame:
+    def batch_predict(
+        self, inputs: pd.DataFrame, batch_size: int = 128
+    ) -> pd.DataFrame:
         # this includes all of the predicted values for all the values in `inputs`
-        accepted_predictions = np.unique(get_filtered_models_predictions(inputs, batch_size))
+        accepted_predictions = np.unique(
+            get_filtered_models_predictions(inputs, batch_size)
+        )
 
         # match the accepted predictions back to their respective documents by
         # searching for each candidate in each document
         unique_ids = np.unique(inputs["id"].values)
-        unique_texts = [inputs.loc[inputs["id"]==i,["full_text"]].iloc[0,0] for i in unique_ids]
+        unique_texts = [
+            inputs.loc[inputs["id"] == i, ["full_text"]].iloc[0, 0] for i in unique_ids
+        ]
 
-        predictions = [find_all_pred_in_text(ut, accepted_predictions) for ut in unique_texts]
+        predictions = [
+            find_all_pred_in_text(ut, accepted_predictions) for ut in unique_texts
+        ]
 
         return list(zip(unique_ids, predictions))
-
 
     def predict(self, text: Document) -> List[str]:
 
         accepted_predictions = get_filtered_models_predictions(text)
 
-
-
         predictions = find_all_pred_in_text(
-            text.loc[0,"full_text"],
-            np.unique(accepted_predictions)
+            text.loc[0, "full_text"], np.unique(accepted_predictions)
         )
 
-        predictions = np.unique(list(map(
-            lambda x: clean_text(x.strip()),
-            predictions
-        )))
+        predictions = np.unique(list(map(lambda x: clean_text(x.strip()), predictions)))
 
         return predictions
 
 
 def clean_text(txt, lower=True):
     if lower:
-        return re.sub('[^A-Za-z0-9]+', ' ', str(txt).lower())
+        return re.sub("[^A-Za-z0-9]+", " ", str(txt).lower())
     else:
-        return re.sub('[^A-Za-z0-9]+', ' ', str(txt))
+        return re.sub("[^A-Za-z0-9]+", " ", str(txt))
 
 
 def clean_text_v2(txt):
-    return re.sub('[^A-Za-z0-9\(\)\[\]]+', ' ', str(txt).lower())
+    return re.sub("[^A-Za-z0-9\(\)\[\]]+", " ", str(txt).lower())
 
 
 def generate_s_e_window_sliding(sample_len, win_size, step_size):
@@ -279,19 +275,37 @@ def remove_overlap(preds, preds_low_confidence):
 
 
 # https://www.kaggle.com/code/dathudeptrai/biomed-roberta-scibert-base?scriptVersionId=66513188&cellId=34
-def get_filtered_models_predictions(text:pd.DataFrame, batch_size=128):
+def get_filtered_models_predictions(text: pd.DataFrame, batch_size=128):
 
     accepted_preds = []
 
     test_df = text
 
     PARAMS = [
-        ("pretrainedbiomedrobertabase", "coleridgeinitiativebiomedrobertabasev2", [0.5, 0.7], -0.1),
-        ("scibertbasecased", "coleridgeinitiativescibertbasecasedv10", [0.5, 0.7], -0.7),
+        (
+            "pretrainedbiomedrobertabase",
+            "coleridgeinitiativebiomedrobertabasev2",
+            [0.5, 0.7],
+            -0.1,
+        ),
+        (
+            "scibertbasecased",
+            "coleridgeinitiativescibertbasecasedv10",
+            [0.5, 0.7],
+            -0.7,
+        ),
     ]
 
     for i, param in enumerate(PARAMS):
-        ids, text_ids, inputs, cosines, preds, preds_low_confidence, tokenizer = end2end(
+        (
+            ids,
+            text_ids,
+            inputs,
+            cosines,
+            preds,
+            preds_low_confidence,
+            tokenizer,
+        ) = end2end(
             param[0],
             param[1],
             test_df,
@@ -302,19 +316,17 @@ def get_filtered_models_predictions(text:pd.DataFrame, batch_size=128):
         preds = remove_acronym(preds)
         preds_low_confidence = remove_acronym(preds_low_confidence)
         preds_low_confidence = remove_overlap(preds, preds_low_confidence)
-        accepted_preds.extend(get_accepted_preds(preds, preds_low_confidence, cosines, param[3], tokenizer))
+        accepted_preds.extend(
+            get_accepted_preds(
+                preds, preds_low_confidence, cosines, param[3], tokenizer
+            )
+        )
 
     return accepted_preds
 
 
-
-
 def end2end(
-    pretrained_path,
-    checkpoint_path,
-    test_df,
-    ner_threshold=[0.5, 0.7],
-    batch_size = 128
+    pretrained_path, checkpoint_path, test_df, ner_threshold=[0.5, 0.7], batch_size=128
 ):
     config = AutoConfig.from_pretrained(f"model1/{pretrained_path}/")
     config.output_attentions = True
@@ -325,23 +337,32 @@ def end2end(
     model.main_model = main_model
     model.K = 3
 
-    start=time()
+    start = time()
 
     # load pre-extract embedding
     # checkpoint_path = f"/kaggle/input/{checkpoint_path}"
     checkpoint_path = f"model1/{pretrained_path}/embeddings"
-    all_support_embeddings = np.load(os.path.join(checkpoint_path, "support_embeddings.npy"))
-    all_support_mask_embeddings = np.load(os.path.join(checkpoint_path, "support_mask_embeddings.npy"))
-    all_support_nomask_embeddings = np.load(os.path.join(checkpoint_path, "support_nomask_embeddings.npy"))
-
+    all_support_embeddings = np.load(
+        os.path.join(checkpoint_path, "support_embeddings.npy")
+    )
+    all_support_mask_embeddings = np.load(
+        os.path.join(checkpoint_path, "support_mask_embeddings.npy")
+    )
+    all_support_nomask_embeddings = np.load(
+        os.path.join(checkpoint_path, "support_nomask_embeddings.npy")
+    )
 
     # create tokenizer and dataloader
     if "distil" in pretrained_path:
-        tokenizer = DistilBertTokenizerFast.from_pretrained(f"model1/{pretrained_path}/")
+        tokenizer = DistilBertTokenizerFast.from_pretrained(
+            f"model1/{pretrained_path}/"
+        )
     elif "roberta" in pretrained_path:
         tokenizer = RobertaTokenizerFast.from_pretrained(f"model1/{pretrained_path}/")
     elif "scibert" in pretrained_path:
-        tokenizer = BertTokenizerFast.from_pretrained(f"model1/{pretrained_path}/", do_lower_case=False)
+        tokenizer = BertTokenizerFast.from_pretrained(
+            f"model1/{pretrained_path}/", do_lower_case=False
+        )
 
     query_dataloader = QueryDataLoader(test_df, batch_size=batch_size)
     test_dataloader = SupportQueryDataLoader(
@@ -372,15 +393,15 @@ def end2end(
         nomask_embeddings=all_support_nomask_embeddings[:1, ...],
     )  # [B, F]
 
-    #model.summary()
+    # model.summary()
     weights_path = glob.glob(os.path.join(checkpoint_path, "*.h5"))[0]
     model.load_weights(weights_path, by_name=True)
 
     # apply tf.function
     model = tf.function(model, experimental_relax_shapes=True)
 
-#     print("!!!!!!!!!!!!!!!!!!!! ",time()-start)  # GL
-#     start=time()
+    #     print("!!!!!!!!!!!!!!!!!!!! ",time()-start)  # GL
+    #     start=time()
 
     # run inference
     ids, text_ids, inputs, cosines, preds, preds_low_confidence = run_inference(
@@ -389,15 +410,23 @@ def end2end(
         all_support_embeddings,
         all_support_mask_embeddings,
         all_support_nomask_embeddings,
-        ner_threshold=ner_threshold
+        ner_threshold=ner_threshold,
     )
-#     print("!!!!!!!!!!!!!!!!!!!! Model1:inference:",time()-start)  # GL
-#     start=time()
+    #     print("!!!!!!!!!!!!!!!!!!!! Model1:inference:",time()-start)  # GL
+    #     start=time()
 
     # release model
     del_everything(model)
 
-    return ids, text_ids, inputs, cosines, preds, preds_low_confidence, test_dataloader.tokenizer
+    return (
+        ids,
+        text_ids,
+        inputs,
+        cosines,
+        preds,
+        preds_low_confidence,
+        test_dataloader.tokenizer,
+    )
 
 
 def del_everything(model):
@@ -417,10 +446,14 @@ def compute_cosine_similarity(x1, x2):
     return tf.clip_by_value(cosine_similarity, -1.0, 1.0)
 
 
-def run_inference(test_dataloader,
-                  model, all_support_embeddings,
-                  all_support_mask_embeddings,
-                  all_support_nomask_embeddings, ner_threshold=[0.5, 0.7]):
+def run_inference(
+    test_dataloader,
+    model,
+    all_support_embeddings,
+    all_support_mask_embeddings,
+    all_support_nomask_embeddings,
+    ner_threshold=[0.5, 0.7],
+):
     preds = []
     preds_low_confidence = []
     cosines = []
@@ -434,20 +467,35 @@ def run_inference(test_dataloader,
     for query_batch in test_dataloader:
         all_cosines = []
         support_embeddings = all_support_embeddings[
-            np.random.choice(range(all_support_embeddings.shape[0]),
-                             size=query_batch["input_ids"].shape[0] * N_TTA)
+            np.random.choice(
+                range(all_support_embeddings.shape[0]),
+                size=query_batch["input_ids"].shape[0] * N_TTA,
+            )
         ]
         support_mask_embeddings = all_support_mask_embeddings[
-            np.random.choice(range(all_support_mask_embeddings.shape[0]),
-                             size=query_batch["input_ids"].shape[0] * N_TTA)
+            np.random.choice(
+                range(all_support_mask_embeddings.shape[0]),
+                size=query_batch["input_ids"].shape[0] * N_TTA,
+            )
         ]
         support_nomask_embeddings = all_support_nomask_embeddings[
-            np.random.choice(range(all_support_nomask_embeddings.shape[0]),
-                             size=query_batch["input_ids"].shape[0] * N_TTA)
+            np.random.choice(
+                range(all_support_nomask_embeddings.shape[0]),
+                size=query_batch["input_ids"].shape[0] * N_TTA,
+            )
         ]
-        support_mask_embeddings = np.mean(np.reshape(support_mask_embeddings, (-1, N_TTA, 768)), axis=1)
-        support_nomask_embeddings = np.mean(np.reshape(support_nomask_embeddings, (-1, N_TTA, 768)), axis=1)
-        query_embeddings, query_mask_embeddings, query_nomask_embeddings, attention_values = model(
+        support_mask_embeddings = np.mean(
+            np.reshape(support_mask_embeddings, (-1, N_TTA, 768)), axis=1
+        )
+        support_nomask_embeddings = np.mean(
+            np.reshape(support_nomask_embeddings, (-1, N_TTA, 768)), axis=1
+        )
+        (
+            query_embeddings,
+            query_mask_embeddings,
+            query_nomask_embeddings,
+            attention_values,
+        ) = model(
             [
                 query_batch["input_ids"],
                 query_batch["attention_mask"],
@@ -473,7 +521,9 @@ def run_inference(test_dataloader,
                     for s_e in start_end:
                         if (s_e[1] - s_e[0]) >= 4:
                             pred_tokens = list(range(s_e[0], s_e[1]))
-                            pred = tokenizer.decode(query_batch["input_ids"][k, ...][pred_tokens])
+                            pred = tokenizer.decode(
+                                query_batch["input_ids"][k, ...][pred_tokens]
+                            )
                             pred_candidates.append(pred)
                     pred = "|".join(pred_candidates)
                 else:
@@ -509,16 +559,31 @@ def find_all_start_end(attention_values):
 
 def check_valid_low_confidence_pred(pred):
     clean_pred = clean_text(pred, True)
-    keywords = ["study", "survey", "studies", "database", "dataset", "data system", "system data", "data set", "data base", "program"]
+    keywords = [
+        "study",
+        "survey",
+        "studies",
+        "database",
+        "dataset",
+        "data system",
+        "system data",
+        "data set",
+        "data base",
+        "program",
+    ]
     if pred != "":
         words = pred.strip().split()
         clean_words = clean_pred.strip().split()
-        string_check= re.compile('[\(\)\[\]]')
+        string_check = re.compile("[\(\)\[\]]")
         if clean_words[0] in ["a", "an", "the"]:
             return False
         if clean_words[-1] in ["a", "an", "the", "in", "on", "of", "for", "and", "or"]:
             return False
-        if words[0][0].isalpha() and words[0][0].isupper() and string_check.search(words[0]) is None:
+        if (
+            words[0][0].isalpha()
+            and words[0][0].isupper()
+            and string_check.search(words[0]) is None
+        ):
             for kw in keywords:
                 if kw in clean_pred:
                     return True
@@ -531,7 +596,9 @@ def remove_stopwords(string):
     return " ".join(filtered_sentence).strip()
 
 
-def get_accepted_preds(preds, preds_low_confidence, cosines, cosine_threshold, tokenizer):
+def get_accepted_preds(
+    preds, preds_low_confidence, cosines, cosine_threshold, tokenizer
+):
     accepted_preds = []
     ########################################################
     all_accepted_preds = []
@@ -545,11 +612,17 @@ def get_accepted_preds(preds, preds_low_confidence, cosines, cosine_threshold, t
             preds_low_confidence_i.extend(preds[i].split("|"))
             preds_low_confidence[i] = "|".join(preds_low_confidence_i)
 
-
     counter_all_accepted_preds = Counter(all_accepted_preds)
     for k, v in counter_all_accepted_preds.items():
         k = k.strip()
-        if ("#" not in k) and len(clean_text(k).strip().split(" ")) >= 3 and len(k.split(" ")) >= 3 and len(remove_stopwords(k).split(" ")) >= 3 and len(k) >= 10 and check_special_token(k, tokenizer):
+        if (
+            ("#" not in k)
+            and len(clean_text(k).strip().split(" ")) >= 3
+            and len(k.split(" ")) >= 3
+            and len(remove_stopwords(k).split(" ")) >= 3
+            and len(k) >= 10
+            and check_special_token(k, tokenizer)
+        ):
             if v >= 4:
                 accepted_preds.append(clean_text(k).strip())
             else:
@@ -566,7 +639,14 @@ def get_accepted_preds(preds, preds_low_confidence, cosines, cosine_threshold, t
     counter_all_accepted_preds = Counter(all_accepted_preds)
     for k, v in counter_all_accepted_preds.items():
         k = k.strip()
-        if ("#" not in k) and len(clean_text(k).strip().split(" ")) >= 3 and len(k.split(" ")) >= 3 and len(remove_stopwords(k).split(" ")) >= 3 and len(k) >= 10 and check_special_token(k, tokenizer):
+        if (
+            ("#" not in k)
+            and len(clean_text(k).strip().split(" ")) >= 3
+            and len(k.split(" ")) >= 3
+            and len(remove_stopwords(k).split(" ")) >= 3
+            and len(k) >= 10
+            and check_special_token(k, tokenizer)
+        ):
             if check_valid_low_confidence_pred(k):
                 accepted_preds.append(clean_text(k).strip())
 
@@ -579,7 +659,11 @@ def check_special_token(string, tokenizer):
     sep_token = tokenizer.sep_token
     cls_token = tokenizer.cls_token
 
-    if (pad_token not in string) and (sep_token not in string) and (cls_token not in string):
+    if (
+        (pad_token not in string)
+        and (sep_token not in string)
+        and (cls_token not in string)
+    ):
         return True
     return False
 
@@ -589,19 +673,26 @@ def calculate_iou(se_0, se_1):
     s_1, e_1 = se_1
     max_s = max(s_0, s_1)
     min_e = min(e_0, e_1)
-    intersection = (min_e - max_s)
-    return  intersection / ((e_0 - s_0) + (e_1 - s_1) - intersection)
+    intersection = min_e - max_s
+    return intersection / ((e_0 - s_0) + (e_1 - s_1) - intersection)
 
 
-def find_cased_pred(lower_start_idx, lower_end_idx, lower_string, cased_string, lower_pred):
+def find_cased_pred(
+    lower_start_idx, lower_end_idx, lower_string, cased_string, lower_pred
+):
     len_lower_string = len(lower_string)
     len_cased_string = len(cased_string)
     if (len_lower_string - len_cased_string) == 0:
-        return cased_string[lower_start_idx: lower_end_idx]
+        return cased_string[lower_start_idx:lower_end_idx]
     else:
         diff_len = abs(len_lower_string - lower_end_idx)
         for shift_idx in range(-diff_len - 1, diff_len + 1):
-            cased_pred_candidate = cased_string[lower_start_idx + shift_idx : lower_start_idx + shift_idx + len(lower_pred)]
+            cased_pred_candidate = cased_string[
+                lower_start_idx
+                + shift_idx : lower_start_idx
+                + shift_idx
+                + len(lower_pred)
+            ]
             if cased_pred_candidate.lower() == lower_pred:
                 return cased_pred_candidate
     return lower_pred.upper()
@@ -613,16 +704,22 @@ def find_all_pred_in_text(normed_text_cased, all_unique_preds):
     preds = []
     preds_indexs = []
     for pred in all_unique_preds:
-        if (" " + pred + " " in normed_text) or (" " + pred + "," in normed_text) or (" " + pred + "." in normed_text):
+        if (
+            (" " + pred + " " in normed_text)
+            or (" " + pred + "," in normed_text)
+            or (" " + pred + "." in normed_text)
+        ):
             preds.append(pred)
-    unique_preds = [] # unique in terms of index.
+    unique_preds = []  # unique in terms of index.
     preds = list(sorted(preds, key=len))
     for pred in preds:
         matchs = re.finditer(pred, normed_text)
         for match in matchs:
             start_index = match.start()
             end_index = match.end()
-            pred_cased = find_cased_pred(start_index, end_index, normed_text, normed_text_cased, pred)
+            pred_cased = find_cased_pred(
+                start_index, end_index, normed_text, normed_text_cased, pred
+            )
             if pred_cased.islower() is False:
                 preds_indexs.append([start_index, end_index])
                 unique_preds.append(pred)
@@ -633,7 +730,9 @@ def find_all_pred_in_text(normed_text_cased, all_unique_preds):
                 start_i, end_i = preds_indexs[i]
                 start_j, end_j = preds_indexs[j]
                 iou = calculate_iou(preds_indexs[i], preds_indexs[j])
-                if (start_i <= end_j and end_i <= end_j and start_i >= start_j) or iou >= 0.1:
+                if (
+                    start_i <= end_j and end_i <= end_j and start_i >= start_j
+                ) or iou >= 0.1:
                     group_idxs.append([i, j])
     unique_preds = np.array(unique_preds)
     for group_idx in group_idxs:
@@ -650,7 +749,9 @@ def find_all_acronym_candidates(labels, raw_text):
         if label != "":
             acronyms_candidates = re.findall(f"{label} \((.*?)\)", string)
             acronyms_candidates.extend(re.findall(f"{label} \[(.*?)\]", string))
-            acronyms_candidates = np.unique([ac for ac in acronyms_candidates if len(ac.split()) >= 1])
+            acronyms_candidates = np.unique(
+                [ac for ac in acronyms_candidates if len(ac.split()) >= 1]
+            )
             if len(acronyms_candidates) > 0:
                 for ac in acronyms_candidates:
                     ac = find_valid_ac(label, ac)
@@ -671,7 +772,9 @@ def find_valid_ac(long_form, short_form):
     short_form_candidate2 = short_form.split()[0]
     short_form_accepted = None
     original_long_index = len(long_form) - 1
-    for i, short_form_candidate in enumerate([short_form_candidate1, short_form_candidate2]):
+    for i, short_form_candidate in enumerate(
+        [short_form_candidate1, short_form_candidate2]
+    ):
         long_index = len(long_form) - 1
         short_index = len(short_form_candidate) - 1
 
@@ -690,20 +793,26 @@ def find_valid_ac(long_form, short_form):
             if long_index < 0:
                 break
 
-        if long_index >= 0 and (not short_form.isdigit()) and long_index < original_long_index:
+        if (
+            long_index >= 0
+            and (not short_form.isdigit())
+            and long_index < original_long_index
+        ):
             if i == 0:
                 short_form_accepted = short_form
             else:
                 short_form_accepted = short_form.split()[0]
 
-            if not (short_form_accepted[-1].isalpha() or short_form_accepted[-1].isdigit()):
+            if not (
+                short_form_accepted[-1].isalpha() or short_form_accepted[-1].isdigit()
+            ):
                 short_form_accepted = short_form_accepted[:-1]
             return short_form_accepted
 
     return short_form_accepted
 
 
-def predict(text:dict):
+def predict(text: dict):
     WIN_SIZE = 200
     SEQUENCE_LENGTH = 320
 
@@ -715,7 +824,7 @@ def predict(text:dict):
     return predictions
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     # with open("kaggle_data/test/2f392438-e215-4169-bebf-21ac4ff253e1.json") as f:
     #     text = json.load(f)
 

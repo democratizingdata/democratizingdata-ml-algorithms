@@ -7,6 +7,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 WIN_SIZE = 200
 SEQUENCE_LENGTH = 320
 
+
 class SupportQueryDataLoader(Sequence):
     def __init__(
         self,

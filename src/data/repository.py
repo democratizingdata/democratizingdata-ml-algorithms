@@ -1,6 +1,13 @@
+from enum import Enum
 from typing import Iterator, Optional, Protocol, Tuple, Union
 
 import pandas as pd
+
+
+class SnippetRepositoryMode(Enum):
+    NER = "ner"
+    CLASSIFICATION = "classification"
+    MASKED_LM = "masked_lm"
 
 
 class Repository(Protocol):

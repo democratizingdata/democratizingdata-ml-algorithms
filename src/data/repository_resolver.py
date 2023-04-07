@@ -1,6 +1,10 @@
-from src.data.repository import Repository
+from src.data.repository import Repository, SnippetRepositoryMode
 
-VALID_REPOS = ["kaggle", "entity"]
+VALID_REPOS = [
+    "kaggle",
+    "entity",
+    *[f"snippet-{s.value}" for s in SnippetRepositoryMode],
+]
 REPO_HELP_TEXT = (
     f"REPO indicates repository to use, valid options are: {','.join(VALID_REPOS)}"
 )

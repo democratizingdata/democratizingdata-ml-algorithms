@@ -1,7 +1,6 @@
 # Based on the dataset used by kaggle model 1
 # https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/main/1st%20ZALO%20FTW/notebooks/get_candidate_labels.ipynb
 
-from enum import Enum
 from functools import partial
 from itertools import starmap
 import itertools
@@ -22,7 +21,7 @@ from spacy import displacy
 from spacy.tokens import Doc
 from tqdm import tqdm
 
-from src.data.repository import Repository
+from src.data.repository import Repository, SnippetRepositoryMode
 from src.models.regex_model import RegexModel
 
 import warnings
@@ -232,7 +231,7 @@ def snippet_to_masked_lm_sample(path: str, row: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "text": [tokens.split()],
-            "pos_tags": [pos_tags.split()],
+            "tags": [pos_tags.split()],
             "mask": [list(map(lambda x: x != "O", ner_tags.split()))],
             "label": [row["snippet_label"]],
         }
@@ -302,12 +301,6 @@ def visualize_ner_tags(text: str, ner_tags: List[str]) -> Tuple[str, str, str]:
         manual=True,
         options={"colors": {"Dataset": "linear-gradient(90deg, #aa9cfc, #fc9ce7)"}},
     )
-
-
-class SnippetRepositoryMode(Enum):
-    NER = "ner"
-    CLASSIFICATION = "classification"
-    MASKED_LM = "masked_lm"
 
 
 class SnippetRepository(Repository):

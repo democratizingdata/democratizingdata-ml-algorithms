@@ -25,15 +25,13 @@ class MetricLearningModel(tf.keras.Model):
         self,
         inputs,
         training=False,
-        sequence_labels=None, # this is always None at inference
+        sequence_labels=None,  # this is always None at inference
         mask_embeddings=None,
         nomask_embeddings=None,
-        use_only_mask=False   # this is set always to false at inference
+        use_only_mask=False,  # this is set always to false at inference
     ):
         output_hidden_states = self.main_model(
-            input_ids=inputs[0],
-            attention_mask=inputs[1],
-            training=training
+            input_ids=inputs[0], attention_mask=inputs[1], training=training
         )
         output_hidden_states = output_hidden_states[-2]
         concat_hidden_states = tf.concat(
@@ -48,7 +46,9 @@ class MetricLearningModel(tf.keras.Model):
             ..., None
         ]  # [B, T, 1]
         normed_mask_embeddings = tf.nn.l2_normalize(mask_embeddings, axis=1)[..., None]
-        normed_nomask_embeddings = tf.nn.l2_normalize(nomask_embeddings, axis=1)[..., None]
+        normed_nomask_embeddings = tf.nn.l2_normalize(nomask_embeddings, axis=1)[
+            ..., None
+        ]
         normed_hidden_states = tf.nn.l2_normalize(concat_hidden_states, axis=-1)
         mask_cosine_similarity = tf.matmul(
             normed_hidden_states, normed_mask_embeddings
