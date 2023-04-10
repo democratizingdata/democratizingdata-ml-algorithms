@@ -3,6 +3,7 @@ import os
 from enum import Enum
 from functools import partial
 from typing import Callable, Iterator, List, Optional, Union
+import logging
 
 import regex as re
 import pandas as pd
@@ -20,12 +21,14 @@ VALIDATED_SNIPPET_PATH: str = os.path.join(
     "validated_snippets_run21_ncses_4.6.2023.csv",
 )
 
+logger = logging.getLogger("ValidatedSnippetsRepository")
 
 class ValidatedSnippetsRepository(Repository):
     def __init__(self, mode: SnippetRepositoryMode):
         self.mode = mode
         self.nlp = spacy.load("en_core_web_sm")
         self.path = VALIDATED_SNIPPET_PATH
+        self.train_frac = 0.8
 
     def transform_df_tokenize(self, row: pd.DataFrame) -> List[str]:
         return list(
@@ -70,7 +73,7 @@ class ValidatedSnippetsRepository(Repository):
         row = self.transform_df_ner(row)
 
         row["mask"] = row["ner_tags"].apply(
-            lambda x: [1 if t in ["B-DAT", "I-DAT"] else 0 for t in x]
+            lambda x: [t in ["B-DAT", "I-DAT"] for t in x]
         )
         row["label"] = 1.0
 
@@ -111,6 +114,11 @@ class ValidatedSnippetsRepository(Repository):
     def get_training_data(
         self, batch_size: Optional[int] = None, balance_labels: bool = False
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+
+        if balance_labels:
+            logger.warning(
+                "Balancing labels is not implemented for ValidatedSnippetsRepository, ignoring"
+            )
 
         transform_f = partial(self.transform_df, False)
         aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
