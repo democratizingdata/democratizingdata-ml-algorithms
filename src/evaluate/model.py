@@ -1,9 +1,10 @@
 import dataclasses as dc
 from functools import partial
-from itertools import chain
+from itertools import chain, starmap
 from time import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import pandas as pd
 from thefuzz import fuzz, process
 from tqdm import tqdm
@@ -11,6 +12,54 @@ from tqdm import tqdm
 from src.data.repository import Repository
 from src.data.kaggle_repository import KaggleRepository
 from src.models.base_model import Model
+
+@dc.dataclass
+class LabelsStats:
+    labels: List[str]
+    statistics: List[str]
+
+    def to_json(self) -> Dict[str, Any]:
+        return dict(
+            labels=self.labels,
+            statistics=self.statistics,
+        )
+
+    @staticmethod
+    def from_json(json_encoding: Dict[str, Any]) -> "LabelsStats":
+        return LabelsStats(
+            labels=json_encoding["labels"],
+            statistics=json_encoding["statistics"],
+        )
+
+    def merge(self, other:"LabelsStats") -> "LabelsStats":
+
+        def idx_or_none(lst, item):
+            try:
+                return lst.index(item)
+            except ValueError:
+                return None
+
+        def merge_single_statistic(
+            self_idx:Union[int, None],
+            other_idx:Union[int, None]) -> str:
+
+            self_stat = self.statistics[self_idx] if self_idx is not None else None
+            other_stat = other.statistics[other_idx] if other_idx is not None else None
+
+
+
+        all_labels = sorted(list(set(self.labels + other.labels)))
+        all_statistics = list(starmap(
+            merge_single_statistic,
+            map(
+                lambda lbl: (idx_or_none(self.labels, lbl), idx_or_none(other.labels, lbl)),
+                all_labels
+            )
+        ))
+
+
+
+
 
 
 @dc.dataclass
@@ -65,6 +114,47 @@ class ModelEvaluation:
         - Recall: {self.recall}
         """
 
+    def __or__(self, other:"ModelEvaluation") -> "ModelEvaluation":
+        """Combine two model evaluations.
+
+        Args:
+            other (ModelEvaluation): Other model evaluation.
+
+        Returns:
+            ModelEvaluation: Combined model evaluation.
+        """
+        if not isinstance(other, ModelEvaluation):
+            raise TypeError("Can only combine ModelEvaluation objects.")
+
+        assert np.setdiff1d(
+            self.output_statistics.loc[:, ["id"]].values,
+            other.output_statistics.loc[:, ["id"]].values).size == 0, "Can only combine ModelEvaluation objects with same documents"
+
+        merged_df = pd.DataFrame({
+            "id": self.output_statistics.loc[:, ["id"]].values.flatten(),
+        })
+
+        merged_df["label"] = merged_df["id"].apply(
+            lambda _id: self.output_statistics.loc[self.output_statistics["id"] == _id, "label"].values[0]
+        )
+
+        def combine_statistics(
+            this:List[Union[str, None]],
+            that:List[Union[str, None]]) -> List[str]:
+            pass
+
+        merged_df["statistics"] = merged_df["id"].apply(
+            lambda _id: self.output_statistics.loc[self.output_statistics["id"] == _id, "statistics"].values[0]
+        )
+
+        return ModelEvaluation(
+            output_statistics=pd.concat([self.output_statistics, other.output_statistics]),
+            run_time=self.run_time + other.run_time,
+            tp=self.tp + other.tp,
+            fp=self.fp + other.fp,
+            fn=self.fn + other.fn,
+        )
+
 
 def retrieve_tpfpfn(
     candidate_list: List[str],
@@ -111,9 +201,10 @@ def calculate_statistics(
                               - "stats" -> containing "TP", "FP" or "FN" for
                                 each label in "labels".
     """
-    predictions = list(
-        set(filter(lambda x: len(x) > 0, row["model_prediction"].strip().split("|")))
-    )
+    predictions = list(set(filter(
+        lambda x: len(x) > 0,
+        row["model_prediction"].strip().split("|")
+    )))
     labels = row["label"].strip().split("|")
 
     true_positives, false_positives, false_negatives = retrieve_tpfpfn(
@@ -176,7 +267,6 @@ def evaluate_model(
         fp=global_stats.count("FP"),
         fn=global_stats.count("FN"),
     )
-
 
 def evaluate_kaggle_private(
     model: Model,
