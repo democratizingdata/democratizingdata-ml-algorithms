@@ -130,18 +130,17 @@ class ModelEvaluation:
             self.output_statistics.loc[:, ["id"]].values,
             other.output_statistics.loc[:, ["id"]].values).size == 0, "Can only combine ModelEvaluation objects with same documents"
 
-        merged_df = pd.DataFrame({
-            "id": self.output_statistics.loc[:, ["id"]].values.flatten(),
-        })
-
-        merged_df["label"] = merged_df["id"].apply(
-            lambda _id: self.output_statistics.loc[self.output_statistics["id"] == _id, "label"].values[0]
+        merged_df = self.output_statistics.loc[:, ["id", "statistics"]].merge(
+            other.output_statistics.loc[:, ["id", "statistics"]],
+            on="id",
+            suffixes=("_self", "_other"),
         )
 
         def combine_statistics(
             this:List[Union[str, None]],
             that:List[Union[str, None]]) -> List[str]:
             pass
+
 
         merged_df["statistics"] = merged_df["id"].apply(
             lambda _id: self.output_statistics.loc[self.output_statistics["id"] == _id, "statistics"].values[0]
