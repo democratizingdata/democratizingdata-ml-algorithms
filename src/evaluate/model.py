@@ -60,6 +60,43 @@ class LabelsStats:
 
 
 
+def merge_single_stat(this:str, that:str, lbl:str) -> str:
+    if this == "TP" or that == "TP":
+        return "TP"
+    elif this != that:
+        raise ValueError("Inconsistent stats for label: {}. got {} - {}".format(lbl, this, that))
+    else:
+        return this
+
+
+def merge_stats(row:pd.DataFrame) -> Dict[str, Any]:
+    _id = row["id"]
+    self_labels = row["statistics_self"]["labels"]
+    other_labels = row["statistics_other"]["labels"]
+    self_stats = row["statistics_self"]["stats"]
+    other_stats = row["statistics_other"]["stats"]
+
+    merged_lbls = []
+    merged_stats = []
+    for self_lbl in self_labels:
+        self_stat = self_stats[self_labels.index(self_lbl)]
+        merged_lbls.append(self_lbl)
+
+        if self_lbl in other_labels:
+            merged_stats.append(merge_single_stat(
+                self_stat,
+                other_stats[other_labels.index(self_lbl)],
+                self_lbl,
+            ))
+        else:
+            merged_stats.append(self_stat)
+
+    # for other_lbl in set(other_labels) - set(self_labels):
+    #     other_stat = other_stats[other_labels.index(other_lbl)]
+    #     merged_lbls.append(other_lbl)
+    #     merged_stats.append(other_stat)
+
+    return {"id":_id, "statistics": dict(labels=merged_lbls, stats=merged_stats)}
 
 
 @dc.dataclass
@@ -128,30 +165,27 @@ class ModelEvaluation:
 
         assert np.setdiff1d(
             self.output_statistics.loc[:, ["id"]].values,
-            other.output_statistics.loc[:, ["id"]].values).size == 0, "Can only combine ModelEvaluation objects with same documents"
+            other.output_statistics.loc[:, ["id"]].values
+        ).size == 0, "Can only combine ModelEvaluation objects with same documents"
 
         merged_df = self.output_statistics.loc[:, ["id", "statistics"]].merge(
             other.output_statistics.loc[:, ["id", "statistics"]],
             on="id",
             suffixes=("_self", "_other"),
-        )
+        ).apply(merge_stats, axis=1, result_type="expand")
 
-        def combine_statistics(
-            this:List[Union[str, None]],
-            that:List[Union[str, None]]) -> List[str]:
-            pass
-
-
-        merged_df["statistics"] = merged_df["id"].apply(
-            lambda _id: self.output_statistics.loc[self.output_statistics["id"] == _id, "statistics"].values[0]
+        merged_stats = list(
+            chain(
+                *list(map(lambda x: x["stats"], merged_df["statistics"].values))
+            )
         )
 
         return ModelEvaluation(
-            output_statistics=pd.concat([self.output_statistics, other.output_statistics]),
+            output_statistics=merged_df,
             run_time=self.run_time + other.run_time,
-            tp=self.tp + other.tp,
-            fp=self.fp + other.fp,
-            fn=self.fn + other.fn,
+            tp=merged_stats.count("TP"),
+            fp=merged_stats.count("FP"),
+            fn=merged_stats.count("FN"),
         )
 
 
