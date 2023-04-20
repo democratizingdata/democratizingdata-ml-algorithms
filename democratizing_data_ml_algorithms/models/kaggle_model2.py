@@ -512,7 +512,11 @@ class KaggleModel2(bm.Model):
             )
 
 
-if __name__ == "__main__":
+def entry_point():
     bm.train = train
     bm.validate = validate
     bm.main()
+
+
+if __name__ == "__main__":
+    entry_point()

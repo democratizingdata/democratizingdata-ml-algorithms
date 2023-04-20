@@ -570,10 +570,14 @@ class NERModel_pytorch(bm.Model):
                     break
 
 
-if __name__ == "__main__":
+def entry_point():
     bm.train = train
     bm.validate = validate
     bm.main()
+
+
+if __name__ == "__main__":
+    entry_point()
 
     # import src.data.kaggle_repository as kr
     # import src.evaluate.model as em

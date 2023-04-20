@@ -786,10 +786,14 @@ class DotSplitSentencizer(Sentencizer):
         super().__init__(_sent_fun, split_by_newline)
 
 
-if __name__ == "__main__":
+def entry_point():
     bm.train = train
     bm.validate = validate
     bm.main()
+
+
+if __name__ == "__main__":
+    entry_point()
 
 
 # if __name__ == "__main__":
