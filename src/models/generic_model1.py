@@ -749,15 +749,20 @@ class GenericModel1(bm.Model):
             mask_e = mask_embedding.detach().cpu().numpy()
             no_mask_e = non_mask_embedding.detach().cpu().numpy()
 
-            mask_embeddings.append(mask_e)
-            no_mask_embeddings.append(no_mask_e)
+            n_mask = sum(map(lambda x: len(x), mask_embeddings))
+            n_no_mask = sum(map(lambda x: len(x), no_mask_embeddings))
 
-            mask_bar.update(len(mask_e))
-            no_mask_bar.update(len(no_mask_e))
+            if n_mask < config["n_support_samples"]:
+                mask_embeddings.append(mask_e)
+                mask_bar.update(len(mask_e))
 
+            if n_no_mask < config["n_support_samples"]:
+                no_mask_embeddings.append(no_mask_e)
+                no_mask_bar.update(len(no_mask_e))
 
-            if len(mask_embeddings) >= config["n_support_samples"]:
+            if n_mask >= config["n_support_samples"] and n_no_mask >= config["n_support_samples"]:
                 break
+
 
         mask_embeddings = np.concatenate(mask_embeddings, axis=0)
         no_mask_embeddings = np.concatenate(no_mask_embeddings, axis=0)
