@@ -211,7 +211,7 @@ def prepare_batch(
     # subsets of the batch as the query/support sets. where query will be "train"
     if n_query > 1:
         dataset = ds.Dataset.from_pandas(
-            batch.drop(columns=["pos_tags"])
+            batch.drop(columns=["tags"])
         ).class_encode_column("label")
 
         # it can be the case thatll of the samples come from one class. That will
@@ -232,7 +232,7 @@ def prepare_batch(
             dataset = dataset.train_test_split(train_size=n_query)
     else:
         dataset = ds.Dataset.from_pandas(
-            batch.drop(columns=["pos_tags"])
+            batch.drop(columns=["tags"])
         ).train_test_split(train_size=n_query)
 
     ds_query = dataset["train"]
