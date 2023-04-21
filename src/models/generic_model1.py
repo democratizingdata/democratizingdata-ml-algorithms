@@ -413,10 +413,10 @@ class GenericModel1(bm.Model):
         if os.path.exists(config["model_tokenizer_name"]):
             print(
                 "Loading pretrained linear layer from:",
-                os.path.join(config["model_tokenizer_name"], "linear.bin"),
+                os.path.join(config["model_tokenizer_name"], "linear.pt"),
             )
             linear.load_state_dict(
-                torch.load(os.path.join(config["model_tokenizer_name"], "linear.bin")),
+                torch.load(os.path.join(config["model_tokenizer_name"], "linear.pt")),
                 strict=True,
             )
 
