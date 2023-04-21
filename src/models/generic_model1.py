@@ -655,6 +655,116 @@ class GenericModel1(bm.Model):
 
         return df
 
+
+    def generate_support_mask_embeddings(
+        self,
+        repository: Repository,
+        config: Dict[str, Any],
+    ) -> None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        model, linear, tokenizer, collator = self.get_model_objects(
+            config, include_optimizer=False
+        )
+
+        model.to(device)
+        linear.to(device)
+        model.eval()
+        linear.eval()
+
+        training_iter = repository.get_training_data(
+            batch_size=config["batch_size"],
+            balance_labels=config.get("balance_labels", True),
+        )
+
+        mask_embeddings = []
+        no_mask_embeddings = []
+
+        mask_bar = tqdm(position=1, desc="mask_ebmeddings", total=config["n_support_samples"])
+        no_mask_bar = tqdm(position=2, desc="no_mask_ebmeddings", total=config["n_support_samples"])
+
+
+        for batch in tqdm(training_iter, desc=f"building support embeddings", position=0):
+            (
+                batch_query,
+                batch_support,
+                query_labels,
+                support_labels,
+            ) = prepare_batch(
+                tokenizer,
+                collator,
+                config.get("n_query", 1),
+                config.get("tokenizer_call_kwargs", {}),
+                batch,
+            )
+
+            send_to_device = lambda d: {k: v.to(device) for k, v in d.items()}
+            batch_query = send_to_device(batch_query)
+            batch_support = send_to_device(batch_support)
+            query_labels = send_to_device(query_labels)
+            support_labels = send_to_device(support_labels)
+
+            # These are the snippet level labels
+            query_seq_labels = query_labels["seq_labels"]  # [bq, 1]
+            support_seq_labels = support_labels["seq_labels"]  # [bs, 1]
+
+            # These indicate which of the support tokens are mask tokens
+            support_mask_token_indicator = support_labels[
+                "mask_token_indicator"
+            ]  # [bs, seq_len]
+            # These indicate which of the query tokens are label tokens
+            query_label_token_indicator = query_labels[
+                "mask_token_indicator"
+            ]  # [bq, seq_len]
+
+            # First process the support set ================================
+            output_support = model(**batch_support)
+            support_hidden_states = (
+                output_support.last_hidden_state
+            )  # [bs, seq_len, emb_dim]
+            # might be support_hidden_states = output_support.hidden_states[-1]
+            support_linear_embedding = linear(
+                support_hidden_states
+            )  # [bs, seq_len, emb_dim]
+
+            # # the first token is the CLS token which is the support embedding
+            # support_embedding = support_hidden_states[:, 0, :]  # [bs, emb_dim]
+
+            mask_embedding = masked_mean(
+                support_linear_embedding,
+                support_mask_token_indicator.unsqueeze(-1),
+                axis=1,  # average over sequence length
+                keepdim=False,
+            )
+
+            non_mask_embedding = masked_mean(
+                support_linear_embedding,
+                (1 - support_mask_token_indicator).unsqueeze(-1),
+                axis=1,  # average over sequence length
+                keepdim=False,
+            )
+
+            mask_e = mask_embedding.cpu().numpy()
+            no_mask_e = non_mask_embedding.cpu().numpy()
+
+            mask_embeddings.append(mask_e)
+            no_mask_embeddings.append(no_mask_e)
+
+            mask_bar.update(len(mask_e))
+            no_mask_bar.update(len(no_mask_e))
+
+
+            if len(mask_embeddings) >= config["n_support_samples"]:
+                break
+
+        mask_embeddings = np.concatenate(mask_embeddings, axis=0)
+        no_mask_embeddings = np.concatenate(no_mask_embeddings, axis=0)
+
+        # save the embeddings
+        np.save(config["support_mask_embedding_path"], mask_embeddings)
+        np.save(config["support_no_mask_embedding_path"], no_mask_embeddings)
+
+
     def train(
         self,
         repository: Repository,
