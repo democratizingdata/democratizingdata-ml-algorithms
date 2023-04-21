@@ -744,8 +744,8 @@ class GenericModel1(bm.Model):
                 keepdim=False,
             )
 
-            mask_e = mask_embedding.cpu().numpy()
-            no_mask_e = non_mask_embedding.cpu().numpy()
+            mask_e = mask_embedding.detach().cpu().numpy()
+            no_mask_e = non_mask_embedding.detach().cpu().numpy()
 
             mask_embeddings.append(mask_e)
             no_mask_embeddings.append(no_mask_e)
