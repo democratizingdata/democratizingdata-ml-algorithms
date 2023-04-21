@@ -663,6 +663,8 @@ class GenericModel1(bm.Model):
     ) -> None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        ng = torch.no_grad()
+        ng.__enter__()
         model, linear, tokenizer, collator = self.get_model_objects(
             config, include_optimizer=False
         )
@@ -763,7 +765,7 @@ class GenericModel1(bm.Model):
         # save the embeddings
         np.save(config["support_mask_embedding_path"], mask_embeddings)
         np.save(config["support_no_mask_embedding_path"], no_mask_embeddings)
-
+        ng.__exit__(None, None, None)
 
     def train(
         self,
