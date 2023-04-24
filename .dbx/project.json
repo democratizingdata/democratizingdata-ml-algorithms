@@ -1,6 +1,6 @@
 {
     "environments": {
-        "icsr": {
+        "default": {
             "profile": "democratizing_data_ml_algorithms",
             "storage_type": "mlflow",
             "properties": {

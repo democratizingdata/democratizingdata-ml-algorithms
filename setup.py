@@ -20,7 +20,8 @@ LOCAL_REQUIREMENTS = [
     "pandarallel",
     "pandas",
     "pytest",
-    "regex" "spacy",
+    "regex",
+    "spacy",
     "thefuzz",
     "tqdm",
     "unidecode",
@@ -75,7 +76,12 @@ setup(
     ),
     entry_points={
         "console_scripts": [
-            "",
+            "icsr_inference_generic_model1 = democratizing_data_ml_algorithms.inference.generic_model1:icsr_inference",
+            "icsr_inference_kaggle_model1 = democratizing_data_ml_algorithms.inference.kaggle_model1:icsr_inference",
+            "icsr_inference_kaggle_model2 = democratizing_data_ml_algorithms.inference.kaggle_model2:icsr_inference",
+            "icsr_inference_kaggle_model3 = democratizing_data_ml_algorithms.inference.kaggle_model3:icsr_inference",
+            "icsr_inference_ner_model = democratizing_data_ml_algorithms.inference.ner_model:icsr_inference",
+            "icsr_inference_regex_model = democratizing_data_ml_algorithms.inference.regex_model:icsr_inference",
         ]
     },
     packages=find_packages(),

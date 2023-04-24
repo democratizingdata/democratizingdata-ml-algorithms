@@ -80,6 +80,10 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
     raise NotImplementedError(NOT_IMPLEMENTED.format("validate"))
 
 
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    raise NotImplementedError(NOT_IMPLEMENTED.format("inference"))
+
+
 def resolve_training_logger(
     comet_workspace: str, comet_project: str
 ) -> SupportsLogging:
@@ -108,7 +112,7 @@ def main() -> None:
     def cli() -> None:
         pass
 
-    @cli.command(name="train", help=REPO_HELP_TEXT)
+    @cli.command(name="train")
     @click.argument("repo", default="kaggle")
     @click.option("--config", default="", help=CONFIG_HELP_TEXT)
     @click.option(
@@ -124,14 +128,26 @@ def main() -> None:
             config_dict = json.load(f)
         train(repository, config_dict, training_logger)
 
-    @cli.command(name="validate", help=REPO_HELP_TEXT)
-    @click.argument("repo", default="kaggle")
+    @cli.command(name="validate")
+    @click.argument("repo", default="kaggle", help=REPO_HELP_TEXT)
     @click.option("--config", default="", help=CONFIG_HELP_TEXT)
     def _validate(repo: str, config: Dict[str, Any]) -> None:
         repository = resolve_repo(repo)
         with open(config) as f:
             config_dict = json.load(f)
         validate(repository, config_dict)
+
+
+    @cli.command(name="inference")
+    @click.argument("repo", help=REPO_HELP_TEXT)
+    @click.option("--config", help=CONFIG_HELP_TEXT)
+    def _inference(repo: str, config: Dict[str, Any]) -> None:
+        repository = resolve_repo(repo)
+        with open(config) as f:
+            config_dict = json.load(f)
+        inference(repository, config_dict)
+
+
 
     cli()
 

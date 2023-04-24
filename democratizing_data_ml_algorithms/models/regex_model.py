@@ -12,9 +12,9 @@ from pandarallel import pandarallel
 from unidecode import unidecode
 from tqdm import tqdm
 
-from democratizing_data_ml_algorithms.data.repository import Repository
-from democratizing_data_ml_algorithms.models.base_model import Model, SupportsLogging
+import democratizing_data_ml_algorithms.models.base_model as bm
 import democratizing_data_ml_algorithms.evaluate.model as em
+from democratizing_data_ml_algorithms.data.repository import Repository
 
 logger = logging.getLogger("RegexModel")
 
@@ -32,7 +32,7 @@ def validate_config(config: Dict[str, Any]) -> None:
 def train(
     repository: Repository,
     config: Dict[str, Any],
-    training_logger: Optional[SupportsLogging] = None,
+    training_logger: Optional[bm.SupportsLogging] = None,
 ) -> None:
     pass
 
@@ -46,6 +46,11 @@ def validate(repository: Repository, config: Dict[str, Any] = dict()) -> None:
     logger.info(f"Saving evaluation to {config['eval_path']}")
     with open(config["eval_path"], "w") as f:
         json.dump(model_evaluation.to_json(), f)
+
+
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    model = RegexModel(config)
+    return model.inference(df)
 
 
 CONNECTING_WORDS = [
@@ -115,7 +120,7 @@ ENTITY_PATTERN = "".join(
 )
 
 
-class RegexModel(Model):
+class RegexModel(bm.Model):
     def __init__(self, config: Dict[str, str]) -> None:
         regex_pattern = (
             config["regex_pattern"] if "regex_pattern" in config else ENTITY_PATTERN
@@ -141,7 +146,7 @@ class RegexModel(Model):
         self,
         repository: Repository,
         config: Dict[str, Any],
-        exp_logger: SupportsLogging,
+        exp_logger: bm.SupportsLogging,
     ) -> None:
         pass
 
@@ -204,3 +209,10 @@ class RegexModel(Model):
             return sub_parens(
                 " ".join(list(map(RegexModel.regexify_first_char, tokens)))
             )
+
+
+def icsr_inference():
+    bm.train = train
+    bm.validate = validate
+    bm.inference = inference
+    bm.main()

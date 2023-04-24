@@ -1,6 +1,6 @@
 from democratizing_data_ml_algorithms.data.repository import Repository
 
-VALID_REPOS = ["kaggle", "entity"]
+VALID_REPOS = ["kaggle", "entity", "snippet", "icsr_parquet"]
 REPO_HELP_TEXT = (
     f"REPO indicates repository to use, valid options are: {','.join(VALID_REPOS)}"
 )
@@ -25,6 +25,12 @@ def resolve_repo(repo_name: str) -> Repository:
         )
 
         return SnippetRepository(repo_name.split("-")[1])
+    elif "icsr_parquet" in repo_name:
+        from democratizing_data_ml_algorithms.data.icsr_parquet_repository import (
+            IcsrParquetRepository,
+        )
+        parquet_file_names = repo_name.split("$")[1].split(",")
+        return IcsrParquetRepository(parquet_file_names)
     else:
         raise ValueError(
             f"Unknown repository: {repo_name}. Valid options are: {','.join(VALID_REPOS)}"

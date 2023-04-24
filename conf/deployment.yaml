@@ -1,14 +1,19 @@
+
+custom:
+  cpu_props: &cpu_props
+    existing_cluster_id: "1202-111355-scgemdfk"
+
 build: #
   python: "pip"
 
 environments: #
-  icsr: #
+  default: #
     workflows: #
       - name: "ncses-data-inference" #
         tasks:
           - task_key: "regex-model-inference"
-            # example task payload
+            <<: *cpu_props
             python_wheel_task:
               package_name: "democratizing_data_ml_algorithms"
-              entry_point: "TODO"
-              parameters: [] # list of string arguments
+              entry_point: "icsr_inference_regex_model"
+              parameters: ["inference", "icsr_parquet$s3a://elsevier-icsr-sd-upload/ncses_full_text_dataframe/20221205/part-00000-tid-3089711222190156801-a72a6bc9-9364-4409-b96e-d79c43373cac-1608804-1-c000.snappy.parquet,s3a://elsevier-icsr-sd-upload/ncses_full_text_dataframe/20221205/part-00001-tid-3089711222190156801-a72a6bc9-9364-4409-b96e-d79c43373cac-1608794-1-c000.snappy.parquet"] # list of string arguments
