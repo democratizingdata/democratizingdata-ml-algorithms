@@ -18,7 +18,7 @@ VALIDATED_SNIPPET_PATH: str = os.path.join(
     "..",
     "data",
     "snippets",
-    "validated_snippets_run21_ncses_4.6.2023.csv",
+    "ncses_run_21_model1_snippets.4.18.2023.csv",
 )
 
 logger = logging.getLogger("ValidatedSnippetsRepository")
@@ -29,6 +29,9 @@ class ValidatedSnippetsRepository(Repository):
         self.nlp = spacy.load("en_core_web_sm")
         self.path = VALIDATED_SNIPPET_PATH
         self.train_frac = 0.8
+        n_rows = sum(1 for _ in open(self.path, "r"))
+        self.n_train_rows = int(n_rows * self.train_frac)
+        self.skiprows = self.n_train_rows
 
     def transform_df_tokenize(self, row: pd.DataFrame) -> List[str]:
         return list(
@@ -98,17 +101,24 @@ class ValidatedSnippetsRepository(Repository):
     def get_iter_or_df(
         self,
         path: str,
+        is_test: bool,
         transform_f: Callable[[pd.DataFrame], pd.DataFrame] = lambda x: x,
         batch_size: Optional[int] = None,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+
+        if is_test:
+            extras = dict(skiprows = self.n_train_rows)
+        else:
+            extras = dict(nrows = self.n_train_rows)
+
         def iter_f():
-            for batch in pd.read_csv(path, chunksize=batch_size):
+            for batch in pd.read_csv(path, chunksize=batch_size, **extras):
                 yield batch
 
         if batch_size:
             return map(transform_f, iter_f())
         else:
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, **extras)
             return transform_f(df)
 
     def get_training_data(
@@ -123,7 +133,14 @@ class ValidatedSnippetsRepository(Repository):
         transform_f = partial(self.transform_df, False)
         aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
         transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
-        return self.get_iter_or_df(self.path, transform_aggregate_f, batch_size)
+        return self.get_iter_or_df(self.path, False, transform_aggregate_f, batch_size)
+
+
+    def get_test_data(
+        self, batch_size: Optional[int] = None
+    ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        transform_f = partial(self.transform_df, True)
+        return self.get_iter_or_df(self.path, True, transform_f, batch_size)
 
 
 if __name__ == "__main__":

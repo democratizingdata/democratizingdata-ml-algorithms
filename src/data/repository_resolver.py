@@ -23,6 +23,12 @@ def resolve_repo(repo_name: str) -> Repository:
         from src.data.snippet_repository import SnippetRepository
 
         return SnippetRepository(repo_name.split("-")[1])
+    elif "validated" in repo_name:
+        from src.data.validated_snippets_repository import ValidatedSnippetsRepository
+
+        return ValidatedSnippetsRepository(
+            SnippetRepositoryMode[repo_name.split("-")[1]]
+        )
     else:
         raise ValueError(
             f"Unknown repository: {repo_name}. Valid options are: {','.join(VALID_REPOS)}"

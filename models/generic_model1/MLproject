@@ -9,8 +9,8 @@ entry_points:
       config: {type: path, default: "models/generic_model1/baseline/config.json"}
       comet_project: {type: string, default: "generic-model1"}
     command: "python -m pip install -e ../../. && python ../../src/models/generic_model1.py train {repo} --config {config} --comet_project {comet_project}"
-  validate:
+  train_validate:
     parameters:
-      repo: {type: string, default: "snippet-masked_lm"}
+      repo: {type: string, default: "validated-masked_lm"}
       config: {type: path, default: "models/generic_model1/baseline/config.json"}
-    command: "python -m pip install -e ../../. && python ../../src/models/generic_model1.py validate {repo} --config {config}"
+    command: "python -m pip install -e ../../. && python ../../src/models/generic_model1.py train {repo} --config {config}"
