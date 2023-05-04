@@ -29,7 +29,7 @@ class ValidatedSnippetsRepository(Repository):
         self.nlp = spacy.load("en_core_web_sm")
         self.path = VALIDATED_SNIPPET_PATH
         self.train_frac = 0.8
-        n_rows = sum(1 for _ in open(self.path, "r"))
+        n_rows = sum(1 for _ in open(VALIDATED_SNIPPET_PATH, "r"))
         self.n_train_rows = int(n_rows * self.train_frac)
         self.skiprows = self.n_train_rows
 
