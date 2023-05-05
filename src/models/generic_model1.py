@@ -87,9 +87,10 @@ def tokenize_and_align_labels(
             for word_idx in range(top_word_id + 1):
                 label_ids[word_ids.index(word_idx)] = label[word_idx]
         except ValueError as e:
+            print(str(e))
             print("word_ids", word_ids)
             print("label_ids", label_ids)
-            print("tokenized_inputs", tokenized_inputs)
+            print("tokenized_inputs", examples["text"][i])
             raise e
         labels.append(label_ids)
 
