@@ -58,9 +58,13 @@ class ValidatedSnippetsRepository(Repository):
 
         try:
             lower_tokens = list(map(lambda t: t.lower(), tokens))
-            start = lower_tokens.index(lbl_tokens[0])
+            start = next(filter(
+                lambda i: lower_tokens[i].startswith(lbl_tokens[0]),
+                range(len(lower_tokens))
+            ))
             token_lbls[start : start + len(lbl_tokens)] = lbl
         except Exception as e:
+            print(lbl_tokens[0], "not in", lower_tokens)
             pass
 
         return pd.DataFrame(
