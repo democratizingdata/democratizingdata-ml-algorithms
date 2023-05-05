@@ -41,7 +41,7 @@ class ValidatedSnippetsRepository(Repository):
                     lambda s: str(s),
                     self.nlp(
                         re.subn(
-                            r"[\\][\\n][\\x\d\d]",
+                            r"[\\][\\n][\\x81]",
                             " ",
                             row["snippet"],
                         )[0].strip(),
