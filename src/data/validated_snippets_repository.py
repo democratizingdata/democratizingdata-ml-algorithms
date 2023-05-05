@@ -111,7 +111,10 @@ class ValidatedSnippetsRepository(Repository):
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
 
         if is_test:
-            extras = dict(skiprows = self.n_train_rows)
+            extras = dict(
+                skiprows = self.n_train_rows,
+                names = ['Unnamed: 0', 'dyad_id', 'm1_score', 'mention_candidate', 'snippet']
+            )
         else:
             extras = dict(nrows = self.n_train_rows)
 
@@ -151,13 +154,25 @@ class ValidatedSnippetsRepository(Repository):
 
 if __name__ == "__main__":
     print("NER ==================================================")
+    print("Training")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.NER)
-    print(next(repo.get_training_data(batch_size=5)))
+    # print(next(repo.get_training_data(batch_size=5)))
+
+    print("Validation")
+    print(next(repo.get_validation_data(batch_size=5)))
 
     print("CLASSIFICATION =======================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.CLASSIFICATION)
+    print("Training")
     print(next(repo.get_training_data(batch_size=5)))
+
+    print("Validation")
+    print(next(repo.get_validation_data(batch_size=5)))
 
     print("MASKED LM ============================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.MASKED_LM)
+    print("Training")
     print(next(repo.get_training_data(batch_size=5)))
+
+    print("Validation")
+    print(next(repo.get_validation_data(batch_size=5)))
