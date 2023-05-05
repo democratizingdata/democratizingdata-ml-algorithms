@@ -54,7 +54,8 @@ class ValidatedSnippetsRepository(Repository):
         token_lbls = ["O"] * len(tokens)
 
         try:
-            start = tokens.index(lbl_tokens[0])
+            lower_tokens = list(map(lambda t: t.lower(), tokens))
+            start = lower_tokens.index(lbl_tokens[0])
             token_lbls[start : start + len(lbl_tokens)] = lbl
         except Exception as e:
             pass
