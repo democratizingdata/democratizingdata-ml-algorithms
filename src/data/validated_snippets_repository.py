@@ -35,15 +35,18 @@ class ValidatedSnippetsRepository(Repository):
 
     def transform_df_tokenize(self, row: pd.DataFrame) -> List[str]:
         return list(
-            map(
-                lambda s: str(s),
-                self.nlp(
-                    re.subn(
-                        r"[\\][\\n]",
-                        " ",
-                        row["snippet"],
-                    )[0].strip(),
-                ).doc,
+            filter(
+                lambda s: s.strip() != "",
+                map(
+                    lambda s: str(s),
+                    self.nlp(
+                        re.subn(
+                            r"[\\][\\n]",
+                            " ",
+                            row["snippet"],
+                        )[0].strip(),
+                    ).doc,
+                )
             )
         )
 
