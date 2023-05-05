@@ -36,13 +36,13 @@ class ValidatedSnippetsRepository(Repository):
     def transform_df_tokenize(self, row: pd.DataFrame) -> List[str]:
         return list(
             map(
-                lambda s: str(s).strip().lower(),
+                lambda s: str(s),
                 self.nlp(
                     re.subn(
                         r"[\\][\\n]",
                         " ",
                         row["snippet"],
-                    )[0]
+                    )[0].strip(),
                 ).doc,
             )
         )
@@ -122,7 +122,7 @@ class ValidatedSnippetsRepository(Repository):
             return transform_f(df)
 
     def get_training_data(
-        self, batch_size: Optional[int] = None, balance_labels: bool = False
+        self, batch_size: Optional[int] = None, balance_labels: bool = False,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
 
         if balance_labels:
@@ -146,12 +146,12 @@ class ValidatedSnippetsRepository(Repository):
 if __name__ == "__main__":
     print("NER ==================================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.NER)
-    print(repo.get_training_data())
+    print(next(repo.get_training_data(batch_size=5)))
 
     print("CLASSIFICATION =======================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.CLASSIFICATION)
-    print(repo.get_training_data())
+    print(next(repo.get_training_data(batch_size=5)))
 
     print("MASKED LM ============================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.MASKED_LM)
-    print(repo.get_training_data())
+    print(next(repo.get_training_data(batch_size=5)))
