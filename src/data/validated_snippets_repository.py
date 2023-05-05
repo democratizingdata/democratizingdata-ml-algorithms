@@ -64,7 +64,6 @@ class ValidatedSnippetsRepository(Repository):
             ))
             token_lbls[start : start + len(lbl_tokens)] = lbl
         except Exception as e:
-            print(lbl_tokens[0], "not in", lower_tokens)
             pass
 
         return pd.DataFrame(

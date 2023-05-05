@@ -24,7 +24,6 @@ import spacy
 from tqdm import tqdm
 
 from datasets.utils.logging import disable_progress_bar
-
 disable_progress_bar()
 
 
@@ -84,8 +83,14 @@ def tokenize_and_align_labels(
         word_ids = tokenized_inputs.word_ids(batch_index=i)
         label_ids = [-100] * len(word_ids)  # assume all tokens are special
         top_word_id = max(map(lambda x: x if x else -1, word_ids))
-        for word_idx in range(top_word_id + 1):
-            label_ids[word_ids.index(word_idx)] = label[word_idx]
+        try:
+            for word_idx in range(top_word_id + 1):
+                label_ids[word_ids.index(word_idx)] = label[word_idx]
+        except ValueError as e:
+            print("word_ids", word_ids)
+            print("label_ids", label_ids)
+            print("tokenized_inputs", tokenized_inputs)
+            raise e
         labels.append(label_ids)
 
     tokenized_inputs["mask_token_indicator"] = labels
@@ -416,7 +421,10 @@ class GenericModel1(bm.Model):
                 os.path.join(config["model_tokenizer_name"], "linear.pt"),
             )
             linear.load_state_dict(
-                torch.load(os.path.join(config["model_tokenizer_name"], "linear.pt")),
+                torch.load(
+                    os.path.join(config["model_tokenizer_name"], "linear.pt"),
+                    map_location=torch.device("cpu"),
+                ),
                 strict=True,
             )
 
