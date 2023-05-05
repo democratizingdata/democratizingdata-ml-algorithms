@@ -143,7 +143,9 @@ class ValidatedSnippetsRepository(Repository):
     def get_test_data(
         self, batch_size: Optional[int] = None
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        transform_f = partial(self.transform_df, True)
+        transform_f = partial(self.transform_df, False)
+        aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
+        transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
         return self.get_iter_or_df(self.path, True, transform_f, batch_size)
 
 
