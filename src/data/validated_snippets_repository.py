@@ -7,6 +7,7 @@ import logging
 
 import regex as re
 import pandas as pd
+from unidecode import unidecode
 from src.data.repository import Repository, SnippetRepositoryMode
 import spacy
 
@@ -41,9 +42,9 @@ class ValidatedSnippetsRepository(Repository):
                     lambda s: str(s),
                     self.nlp(
                         re.subn(
-                            r"[\\][\\n][\\x81]",
+                            r"[\\][\\n]",
                             " ",
-                            row["snippet"],
+                            unidecode(row["snippet"]),
                         )[0].strip(),
                     ).doc,
                 )
