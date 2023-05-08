@@ -7,6 +7,7 @@ import logging
 
 import regex as re
 import pandas as pd
+from unidecode import unidecode
 from src.data.repository import Repository, SnippetRepositoryMode
 import spacy
 
@@ -35,15 +36,18 @@ class ValidatedSnippetsRepository(Repository):
 
     def transform_df_tokenize(self, row: pd.DataFrame) -> List[str]:
         return list(
-            map(
-                lambda s: str(s).strip().lower(),
-                self.nlp(
-                    re.subn(
-                        r"[\\][\\n]",
-                        " ",
-                        row["snippet"],
-                    )[0]
-                ).doc,
+            filter(
+                lambda s: s.strip() != "",
+                map(
+                    lambda s: str(s),
+                    self.nlp(
+                        re.subn(
+                            r"[\\][\\n]",
+                            " ",
+                            unidecode(row["snippet"]),
+                        )[0].strip(),
+                    ).doc,
+                )
             )
         )
 
@@ -54,7 +58,11 @@ class ValidatedSnippetsRepository(Repository):
         token_lbls = ["O"] * len(tokens)
 
         try:
-            start = tokens.index(lbl_tokens[0])
+            lower_tokens = list(map(lambda t: t.lower(), tokens))
+            start = next(filter(
+                lambda i: lower_tokens[i].startswith(lbl_tokens[0]),
+                range(len(lower_tokens))
+            ))
             token_lbls[start : start + len(lbl_tokens)] = lbl
         except Exception as e:
             pass
@@ -107,7 +115,10 @@ class ValidatedSnippetsRepository(Repository):
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
 
         if is_test:
-            extras = dict(skiprows = self.n_train_rows)
+            extras = dict(
+                skiprows = self.n_train_rows,
+                names = ['Unnamed: 0', 'dyad_id', 'm1_score', 'mention_candidate', 'snippet']
+            )
         else:
             extras = dict(nrows = self.n_train_rows)
 
@@ -122,7 +133,7 @@ class ValidatedSnippetsRepository(Repository):
             return transform_f(df)
 
     def get_training_data(
-        self, batch_size: Optional[int] = None, balance_labels: bool = False
+        self, batch_size: Optional[int] = None, balance_labels: bool = False,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
 
         if balance_labels:
@@ -136,22 +147,36 @@ class ValidatedSnippetsRepository(Repository):
         return self.get_iter_or_df(self.path, False, transform_aggregate_f, batch_size)
 
 
-    def get_test_data(
+    def get_validation_data(
         self, batch_size: Optional[int] = None
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-        transform_f = partial(self.transform_df, True)
-        return self.get_iter_or_df(self.path, True, transform_f, batch_size)
+        transform_f = partial(self.transform_df, False)
+        aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
+        transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
+        return self.get_iter_or_df(self.path, True, transform_aggregate_f, batch_size)
 
 
 if __name__ == "__main__":
     print("NER ==================================================")
+    print("Training")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.NER)
-    print(repo.get_training_data())
+    # print(next(repo.get_training_data(batch_size=5)))
+
+    print("Validation")
+    print(next(repo.get_validation_data(batch_size=5)))
 
     print("CLASSIFICATION =======================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.CLASSIFICATION)
-    print(repo.get_training_data())
+    print("Training")
+    print(next(repo.get_training_data(batch_size=5)))
+
+    print("Validation")
+    print(next(repo.get_validation_data(batch_size=5)))
 
     print("MASKED LM ============================================")
     repo = ValidatedSnippetsRepository(SnippetRepositoryMode.MASKED_LM)
-    print(repo.get_training_data())
+    print("Training")
+    print(next(repo.get_training_data(batch_size=5)))
+
+    print("Validation")
+    print(next(repo.get_validation_data(batch_size=5)))
