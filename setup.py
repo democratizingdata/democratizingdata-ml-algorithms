@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 ICSR_REQUIREMENTS = [
-    "imbalance-learn",
+    "imbalanced-learn",
     "pandarallel",
     "pyyaml",
     "spacy",
@@ -13,7 +13,7 @@ ICSR_REQUIREMENTS = [
 
 LOCAL_REQUIREMENTS = [
     "dbx",
-    "imbalance-learn",
+    "imbalanced-learn",
     "matplotlib",
     "numpy",
     "scikit-learn",
