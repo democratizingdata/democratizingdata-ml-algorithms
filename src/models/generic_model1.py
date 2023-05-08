@@ -1533,6 +1533,8 @@ class GenericModel1(bm.Model):
 
                     ng.__exit__(None, None, None)
 
+                    plt.close("all")
+
                 # the balanced version of the dataset is quite large so offer
                 # the option to get out of the epoch early
                 if step >= config.get("steps_per_epoch", np.inf):
