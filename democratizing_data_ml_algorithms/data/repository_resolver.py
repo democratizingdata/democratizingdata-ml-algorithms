@@ -29,6 +29,7 @@ def resolve_repo(repo_name: str) -> Repository:
         from democratizing_data_ml_algorithms.data.icsr_parquet_repository import (
             IcsrParquetRepository,
         )
+
         parquet_file_names = repo_name.split("$")[1].split(",")
         return IcsrParquetRepository(parquet_file_names)
     else:

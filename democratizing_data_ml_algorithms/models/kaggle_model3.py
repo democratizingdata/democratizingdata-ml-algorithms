@@ -101,6 +101,17 @@ logger = logging.getLogger("kaggle_model3")
 
 
 def validate_config(config: Dict[str, Any]) -> None:
+    """Validates the configuration dictionary.
+
+    Args:
+        config (Dict[str, Any]): Configuration dictionary
+
+    Returns:
+        None
+
+    Raises:
+        AssertionError: If any of the expected keys are missing from the config
+    """
 
     expected_keys = [
         "keywords",
@@ -786,14 +797,10 @@ class DotSplitSentencizer(Sentencizer):
         super().__init__(_sent_fun, split_by_newline)
 
 
-def entry_point():
+if __name__ == "__main__":
     bm.train = train
     bm.validate = validate
     bm.main()
-
-
-if __name__ == "__main__":
-    entry_point()
 
 
 # if __name__ == "__main__":

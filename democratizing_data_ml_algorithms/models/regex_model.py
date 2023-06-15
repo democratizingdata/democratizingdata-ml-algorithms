@@ -211,7 +211,7 @@ class RegexModel(bm.Model):
             )
 
 
-def icsr_inference():
+if __name__ == "__main__":
     bm.train = train
     bm.validate = validate
     bm.inference = inference

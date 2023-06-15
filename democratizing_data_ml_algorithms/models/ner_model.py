@@ -13,7 +13,7 @@ import pandas as pd
 import spacy
 import torch
 import transformers as tfs
-from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
+from transformers import AutoModelForTokenClassification, AutoTokenizer
 from tqdm import tqdm
 
 from datasets.utils.logging import disable_progress_bar
@@ -40,6 +40,14 @@ logger = logging.getLogger("ner_model")
 
 
 def validate_config(config: Dict[str, Any]) -> None:
+    """Validate the config for the model.
+
+    Args:
+        config (Dict[str, Any]): The config for the model.
+
+    Raises:
+        AssertionError: If the config is missing any keys.
+    """
 
     expected_keys = {
         "epochs",
@@ -59,6 +67,16 @@ def train(
     config: Dict[str, Any],
     training_logger: Optional[bm.SupportsLogging] = None,
 ) -> None:
+    """Train the model.
+
+    Args:
+        repository (Repository): The repository containing the data.
+        config (Dict[str, Any]): The config for the model.
+        training_logger (Optional[bm.SupportsLogging], optional): The logger to use for training. Defaults to None.
+
+    Returns:
+        None
+    """
 
     validate_config(config)
     training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
@@ -67,6 +85,15 @@ def train(
 
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
+    """Validate the model.
+
+    Args:
+        repository (Repository): The repository containing the data.
+        config (Dict[str, Any]): The config for the model.
+
+        Returns:
+            None
+    """
 
     validate_config(config)
     raise NotImplementedError()
@@ -81,6 +108,15 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
 def convert_ner_tags_to_ids(
     lbl_to_id: Dict[str, int], ner_tags: List[List[str]]
 ) -> List[int]:
+    """Converts a list of NER tags to a list of NER tag ids.
+
+    Args:
+        lbl_to_id (Dict[str, int]): A mapping from NER tag to NER tag id.
+        ner_tags (List[List[str]]): A list of NER tags.
+
+    Returns:
+        List[int]: A list of NER tag ids.
+    """
     tag_f = lambda ner_tags: [lbl_to_id[ner_tag] for ner_tag in ner_tags]
     return [tag_f(ner_tags) for ner_tags in ner_tags]
 
@@ -88,11 +124,30 @@ def convert_ner_tags_to_ids(
 def convert_sample_ner_tages_to_ids(
     lbl_to_id: Dict[str, int], sample: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """Converts the NER tags in a sample to NER tag ids.
+
+    Args:
+        lbl_to_id (Dict[str, int]): A mapping from NER tag to NER tag id.
+        sample (Dict[str, Any]): A sample.
+
+    Returns:
+        Dict[str, Any]: A sample with NER tags converted to NER tag ids.
+    """
+
     sample["labels"] = convert_ner_tags_to_ids(lbl_to_id, sample["labels"])
     return sample
 
 
 def tokenize_and_align_labels(tokenizer_f, examples):
+    """Tokenize and align labels.
+
+    Args:
+        tokenizer_f (tfs.tokenization_utils_base.PreTrainedTokenizerBase): The tokenizer to use.
+        examples (Dict[str, Any]): The examples to tokenize and align labels for.
+
+    Returns:
+        Dict[str, Any]: The tokenized and aligned labels.
+    """
     tokenized_inputs = tokenizer_f(examples["text"])
 
     labels = []
@@ -216,6 +271,8 @@ def high_probablity_token_groups(
 
 
 class NERModel_pytorch(bm.Model):
+    """A PyTorch NER model to detect datasets in the text."""
+
     lbl_to_id = {"O": 0, "B-DAT": 1, "I-DAT": 2}
     id_to_lbl = {v: k for k, v in lbl_to_id.items()}
 
@@ -570,14 +627,10 @@ class NERModel_pytorch(bm.Model):
                     break
 
 
-def entry_point():
+if __name__ == "__main__":
     bm.train = train
     bm.validate = validate
     bm.main()
-
-
-if __name__ == "__main__":
-    entry_point()
 
     # import src.data.kaggle_repository as kr
     # import src.evaluate.model as em

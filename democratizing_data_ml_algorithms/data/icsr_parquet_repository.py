@@ -8,6 +8,7 @@ from democratizing_data_ml_algorithms.data.repository import Repository
 
 logger = logging.getLogger("icsr_parquet_repository")
 
+
 class IcsrParquetRepository(Repository):
     """A repository for the ICSR parquet data set."""
 
@@ -31,7 +32,6 @@ class IcsrParquetRepository(Repository):
     def get_test_data(
         self, batch_size: Optional[int] = None
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-
         def iter_f():
             parquet_files = copy.copy(self.parquet_files)
             cache_dataframe = pd.DataFrame({"id": [], "text": []})
@@ -44,7 +44,7 @@ class IcsrParquetRepository(Repository):
                                 pd.read_parquet(parquet_files.pop())
                                 .loc[:, ["Eid", "full_text"]]
                                 .rename(columns={"Eid": "id", "full_text": "text"})
-                            )
+                            ),
                         ]
                     )
 

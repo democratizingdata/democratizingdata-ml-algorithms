@@ -7,12 +7,12 @@ mentions from scientific papers. The project builds on the first through
 third-place submissions to the [Show US The Data Kaggle
 competition](https://www.kaggle.com/c/coleridgeinitiative-show-us-the-data/).
 
-The top three submissions to the Kaggle provided applied a variety of
-of techniques to to solve the problem. However, winning the competition
-and solving the problem are two different things. Each model has a base approach
-that is wrapped with some heuristics to improve performance. This repository
-applies the distilled approach from each submission (without heuristics) and 
-seeks to improve and develop new approaches to the problem.
+The top three submissions to the Kaggle provided applied a variety of techniques
+to solve the problem. However, winning the competition and solving the problem
+are two different things. Each model has a base approach that is wrapped with
+some heuristics to improve performance. This repository applies the distilled
+approach from each submission (without heuristics) and seeks to improve and
+develop new approaches to the problem.
 
 ## Project Structure
 
@@ -41,7 +41,7 @@ The project is laid out in the following way:
 - `/src` contains the source code for models, data, and evaluation. The code is
   laid out to emulate the cookie-cutter data science project structure. So to
   use it you need to install the code using `pip install -e .` from the root
-  dir. 
+  directory.
 
 - `/stubs` contains `mypy` typing stubs (These are not currently used)
 

@@ -35,6 +35,15 @@ logger = logging.getLogger("token_classification_model")
 
 
 def validate_config(config: Dict[str, Any]) -> None:
+    """Validates the config for the model.
+
+    Args:
+        config (Dict[str, Any]): Config for the model
+
+    Raises:
+        AssertionError: If the config is missing any of the required keys
+                        OR if save_model is true and model_path is not provided
+    """
 
     expected_keys = {
         "model_tokenizer_name",
@@ -58,6 +67,17 @@ def train(
     config: Dict[str, Any],
     training_logger: Optional[bm.SupportsLogging] = None,
 ) -> None:
+    """Trains the model.
+
+    Args:
+        repository (Repository): Repository to use for training
+        config (Dict[str, Any]): Config for the model
+        training_logger (Optional[bm.SupportsLogging], optional): Logger to use for logging metrics, parameters, and figures. Defaults to None.
+
+    Raises:
+        AssertionError: if the config is fails validation in validate_config()
+    """
+
     validate_config(config)
 
     training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
@@ -67,16 +87,50 @@ def train(
 
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
+    """Validates the model.
+
+    Args:
+        repository (Repository): Repository to use for validation
+        config (Dict[str, Any]): Config for the model
+
+    Raises:
+        AssertionError: if the config is fails validation in validate_config()
+
+    Returns:
+        None
+    """
+
     validate_config(config)
 
+    raise NotImplementedError()
 
-def convert_to_T(T: type, vals: List[str]) -> List[float]:
+
+def convert_to_T(T: type, vals: List[str]) -> List["T"]:
+    """Converts a list of values to a list of type T.
+
+    Args:
+        T (type): Type to convert to
+        vals (List[str]): List of values to convert
+
+    Returns:
+        List[float]: List of converted values
+    """
     return [T(x) for x in vals]
 
 
 def tokenize_and_align_labels(
     tokenizer_f: Callable[[Dict[str, Any]], Dict[str, Any]], examples: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """Tokenizes the examples and aligns the labels.
+
+    Args:
+        tokenizer_f (Callable[[Dict[str, Any]], Dict[str, Any]]): Tokenizer function to use
+        examples (Dict[str, Any]): Examples to tokenize and align
+
+    Returns:
+        Dict[str, Any]: Tokenized and aligned examples
+    """
+
     tokenized_inputs = tokenizer_f(examples["text"])
 
     labels = []
@@ -95,12 +149,30 @@ def tokenize_and_align_labels(
 def apply_mask_sample(
     tokens: List[str], mask_token_indicator: List[float]
 ) -> List[str]:
+    """Applies the mask to the tokens.
+
+    Args:
+        tokens (List[str]): Tokens to apply the mask to
+        mask_token_indicator (List[float]): Mask to apply to the tokens
+
+    Returns:
+        List[str]: Tokens with the mask applied
+    """
 
     tokens = list(map(lambda t, m: "[MASK]" if m else t, tokens, mask_token_indicator))
     return tokens
 
 
 def apply_mask_batched(dataset: Dict[str, Any]) -> Dict[str, Any]:
+    """Applies the mask to the dataset.
+
+    Args:
+        dataset (Dict[str, Any]): Dataset to apply the mask to
+
+    Returns:
+        Dict[str, Any]: Dataset with the mask applied
+    """
+
     # inintially every token is masked, however, we want to group them
     # so that a single token represents an entire dataset
     ungrouped_masks = list(
@@ -129,6 +201,15 @@ def apply_mask_batched(dataset: Dict[str, Any]) -> Dict[str, Any]:
 def group_mask_sample(
     tokens: List[str], mask_token_indicator: List[float]
 ) -> List[str]:
+    """Groups the mask for a sample.
+
+    Args:
+        tokens (List[str]): Tokens to group the mask for
+        mask_token_indicator (List[float]): Mask to group
+
+    Returns:
+        List[str]: Tokens with the mask grouped
+    """
 
     # group the masks
     grouped_text_masks = [tokens[0]]
@@ -147,6 +228,16 @@ def group_mask_sample(
 def convert_dataset(
     tokenizer_f: Callable, collator: Callable, dataset: ds.Dataset
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    """Converts the dataset to a format that can be used by the model.
+
+    Args:
+        tokenizer_f (Callable): Tokenizer function to use
+        collator (Callable): Collator to use
+        dataset (ds.Dataset): Dataset to convert
+
+    Returns:
+        Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: Converted dataset inputs and labels
+    """
 
     convert_f = partial(convert_to_T, int)
 
@@ -205,6 +296,18 @@ def prepare_batch(
     Dict[str, torch.Tensor],
     Dict[str, torch.Tensor],
 ]:
+    """Prepares a batch for training.
+
+    Args:
+        tokenizer (tfs.tokenization_utils_base.PreTrainedTokenizerBase): Tokenizer to use
+        data_collator (tfs.data.data_collator.DataCollatorMixin): Data collator to use
+        n_query (int): Number of query samples to use
+        tokenizer_call_kwargs (Dict[str, Any]): Keyword arguments to pass to the tokenizer
+        batch (pd.DataFrame): Batch to prepare
+
+    Returns:
+        Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: Prepared batch
+    """
 
     # we need to split the batch into support and query sets, well use the
     # train/test split functionality from datasets.Dataset to select random
@@ -259,6 +362,16 @@ def filter_prep_tokens(
     y_pred: np.ndarray,
 ) -> Tuple[List[str], List[float], List[float]]:
     # we need to filter out special tokens [CLS] and [SEP]
+    """Filters out special tokens from the tokens, y_true, and y_pred arrays.
+
+    Args:
+        tokens (np.ndarray): Array of tokens
+        y_true (np.ndarray): Array of true labels
+        y_pred (np.ndarray): Array of predicted labels
+
+    Returns:
+        Tuple[List[str], List[float], List[float]]: Filtered tokens, y_true, and y_pred
+    """
 
     idxs = list(
         filter(
@@ -272,6 +385,7 @@ def filter_prep_tokens(
 # based on
 # https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
 def color_text_figure_binary(tokens, cmap, y_true, y_pred, threshold=0.5):
+
     f, ax = plt.subplots(figsize=(10, 1))
     r = f.canvas.get_renderer()
     ax.set_axis_off()
@@ -317,7 +431,18 @@ def masked_mean(
     keepdim: bool = True,
     be_safe: bool = True,
 ) -> torch.Tensor:
-    """"""
+    """Computes the mean of the array along the given axis, ignoring masked values.
+
+    Args:
+        arr (torch.Tensor): Array to compute the mean of
+        keep_mask (torch.Tensor): Mask of values to keep
+        axis (int): Axis to compute the mean along
+        keepdim (bool): Whether to keep the dimension of the mean
+        be_safe (bool): Whether to be safe and replace 0s in the denominator with 1s
+
+    Returns:
+        torch.Tensor: Mean of the array along the given axis, ignoring masked values
+    """
     masked_arr = arr * keep_mask
     n = keep_mask.sum(axis=axis, keepdim=keepdim)
 
@@ -328,7 +453,9 @@ def masked_mean(
 
 
 def merge_tokens_w_classifications(
-    tokens: List[str], token_should_be_merged: List[bool], classifications: List[float]
+    tokens: List[str],
+    token_should_be_merged: List[bool],
+    classifications: List[float],
 ) -> List[Tuple[str, float]]:
     merged = []
     for token, do_merge, classification in zip(
@@ -341,7 +468,16 @@ def merge_tokens_w_classifications(
     return merged
 
 
-def is_special_token(token):
+def is_special_token(token: str) -> bool:
+    """Checks if a token is a special token.
+
+    Args:
+        token (str): Token to check
+
+    Returns:
+        bool: Whether the token is a special token
+    """
+
     return (
         token.startswith("[")
         and token.endswith("]")
@@ -354,6 +490,15 @@ def high_probablity_token_groups(
     tokens_classifications: List[Tuple[str, float]],
     threshold: float = 0.9,
 ) -> List[List[Tuple[str, float]]]:
+    """Groups tokens with high probability classifications together.
+
+    Args:
+        tokens_classifications (List[Tuple[str, float]]): List of tokens and their classifications
+        threshold (float, optional): Threshold to use for high probability. Defaults to 0.9.
+
+    Returns:
+        List[List[Tuple[str, float]]]: List of groups of tokens with high probability classifications
+    """
 
     datasets = []
     dataset = []
@@ -1422,14 +1567,10 @@ class GenericModel1(bm.Model):
                     break
 
 
-def entry_point():
+if __name__ == "__main__":
     bm.train = train
     bm.validate = validate
     bm.main()
-
-
-if __name__ == "__main__":
-    entry_point()
 
     # import src.data.kaggle_repository as kr
     # import src.evaluate.model as em

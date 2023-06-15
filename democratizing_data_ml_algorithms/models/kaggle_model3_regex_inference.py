@@ -1,5 +1,5 @@
-# Model 3 uses simple string matching
-# Can we improve the robustness and accuracy of this model by using regex?
+# Model 3 uses simple string matching, this uses the same keywords as the third
+# place submission, but rather than string searching it uses regex.
 
 import json
 import logging
@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import democratizing_data_ml_algorithms.evaluate.model as em
 from democratizing_data_ml_algorithms.data.repository import Repository
-from democratizing_data_ml_algorithms.models.base_model import Model, SupportsLogging
+from democratizing_data_ml_algorithms.models.base_model import SupportsLogging
 from democratizing_data_ml_algorithms.models.regex_model import RegexModel
 
 logger = logging.getLogger("RegexModel")
@@ -26,7 +26,7 @@ def train(
     config: Dict[str, Any],
     training_logger: Optional[SupportsLogging] = None,
 ) -> None:
-    pass
+    raise NotImplementedError("RegexModel does not support training")
 
 
 def validate(repository: Repository, config: Dict[str, Any] = dict()) -> None:
