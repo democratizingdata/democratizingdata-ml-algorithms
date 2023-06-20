@@ -2,15 +2,6 @@
 
 from setuptools import setup, find_packages
 
-ICSR_REQUIREMENTS = [
-    "imbalanced-learn",
-    "pandarallel",
-    "pyyaml",
-    "spacy",
-    "thefuzz",
-    "unidecode",
-]
-
 LOCAL_REQUIREMENTS = [
     "dbx",
     "imbalanced-learn",
@@ -59,13 +50,22 @@ REGEX_MODEL_REQUIREMENTS = []
 
 SCHWARTZ_HEARST_MODEL_REQUIREMENTS = []
 
+ALL = (
+    GENERIC_MODEL1_REQUIREMENTS
+    + KAGGLE_MODEL1_REQUIREMENTS
+    + KAGGLE_MODEL2_REQUIREMENTS
+    + KAGGLE_MODEL3_REQUIREMENTS
+    + NER_MODEL_REQUIREMENTS
+    + REGEX_MODEL_REQUIREMENTS
+    + SCHWARTZ_HEARST_MODEL_REQUIREMENTS
+)
+
 setup(
     name="democratizing_data_ml_algorithms",
     version="0.0.1",
     author="Ryan Hausen and Contributors",
-    install_requires=ICSR_REQUIREMENTS,
+    install_requires=LOCAL_REQUIREMENTS,
     extras_require=dict(
-        local=LOCAL_REQUIREMENTS,
         generic_model1=GENERIC_MODEL1_REQUIREMENTS,
         kaggle_model1=KAGGLE_MODEL1_REQUIREMENTS,
         kaggle_model2=KAGGLE_MODEL2_REQUIREMENTS,
@@ -73,6 +73,7 @@ setup(
         ner_model=NER_MODEL_REQUIREMENTS,
         regex_model=REGEX_MODEL_REQUIREMENTS,
         schwartz_hearst_model=SCHWARTZ_HEARST_MODEL_REQUIREMENTS,
+        all=ALL,
     ),
     packages=find_packages(),
     include_package_data=True,

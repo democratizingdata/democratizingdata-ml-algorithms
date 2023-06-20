@@ -16,13 +16,15 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
-import torch
-
-# from apex import amp
-# from apex.optimizers import FusedAdam
 from tqdm import trange
-from scipy.special import expit, softmax
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
+
+try:
+    import torch
+    from scipy.special import expit, softmax
+    from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
+except ImportError:
+    raise ImportError("Running GenericModel1 requires extras 'kaggle_model2' or 'all'")
+
 
 from democratizing_data_ml_algorithms.data.repository import Repository
 import democratizing_data_ml_algorithms.models.base_model as bm
@@ -31,25 +33,19 @@ import democratizing_data_ml_algorithms.models.schwartz_hearst_model as shm
 
 logger = logging.getLogger("KaggleModel2")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-
-    expected_keys = [
-        "accum_for",
-        "max_cores",
-        "max_seq_len",
-        "use_amp",
-        "pretrained_model",
-        "learning_rate",
-        "num_epochs",
-        "optimizer",
-        "model_path",
-        "batch_size",
-        "save_model",
-    ]
-
-    for key in expected_keys:
-        assert key in config, f"Missing key {key} in config"
+EXPECTED_KEYS = {
+    "accum_for",
+    "max_cores",
+    "max_seq_len",
+    "use_amp",
+    "pretrained_model",
+    "learning_rate",
+    "num_epochs",
+    "optimizer",
+    "model_path",
+    "batch_size",
+    "save_model",
+}
 
 
 def train(
@@ -68,8 +64,8 @@ def train(
     Returns:
         None
     """
-    validate_config(config)
-    training_logger.log_parameters(config)
+    bm.validate_config(EXPECTED_KEYS, config)
+    training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
     model = KaggleModel2()
     model.train(repository, config, training_logger)
 
@@ -84,12 +80,10 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
     Returns:
         None
     """
-    validate_config(config)
+    bm.validate_config(EXPECTED_KEYS, config)
 
     model = KaggleModel2()
     model_evaluation = em.evaluate_model(repository, model, config)
-
-    print(model_evaluation)
 
     logger.info(f"Saving evaluation to {config['eval_path']}")
     with open(config["eval_path"], "w") as f:
@@ -116,15 +110,6 @@ class KaggleModel2(bm.Model):
         pretrained_config = AutoConfig.from_pretrained(
             config["pretrained_model"], num_labels=2
         )
-
-        # if torch.cuda.is_available():
-        #     model = AutoModelForSequenceClassification.from_pretrained(
-        #         config["pretrained_model"], config=pretrained_config
-        #     ).cuda()
-        # else:
-        #     model = AutoModelForSequenceClassification.from_pretrained(
-        #         config["pretrained_model"], config=pretrained_config
-        #     )
 
         model = AutoModelForSequenceClassification.from_pretrained(
             config["pretrained_model"], config=pretrained_config
@@ -208,7 +193,6 @@ class KaggleModel2(bm.Model):
                 test_samples,
             )
 
-            # self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
             scheduler.step()
             if config["save_model"]:
                 save_path = os.path.join(
@@ -275,10 +259,6 @@ class KaggleModel2(bm.Model):
                 loss = model_outputs["loss"]
                 loss = loss / config["accum_for"]  # Normalize if we're doing GA
 
-                # if config["use_amp"]:
-                #     with amp.scale_loss(loss, opt) as scaled_loss:
-                #         scaled_loss.backward()
-                # else:
                 loss.backward()
 
                 if torch.cuda.is_available():

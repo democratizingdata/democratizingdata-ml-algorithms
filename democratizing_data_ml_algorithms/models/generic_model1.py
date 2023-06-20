@@ -7,59 +7,40 @@
 
 
 from functools import partial
-from itertools import filterfalse, islice, starmap
+from itertools import filterfalse, starmap
 import logging
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import datasets as ds
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
-import torch
-import transformers as tfs
-from pytorch_metric_learning import losses as metric_losses
 import spacy
 from tqdm import tqdm
 
-from datasets.utils.logging import disable_progress_bar
-
-disable_progress_bar()
-
+# check if the generic_model1 extras are installed
+try:
+    import datasets as ds
+    import torch
+    import transformers as tfs
+    from pytorch_metric_learning import losses as metric_losses
+except ImportError:
+    raise ImportError("Running GenericModel1 requires extras 'generic_model1' or 'all'")
 
 from democratizing_data_ml_algorithms.data.repository import Repository
 import democratizing_data_ml_algorithms.models.base_model as bm
 
+ds.utils.logging.disable_progress_bar()
 logger = logging.getLogger("token_classification_model")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-    """Validates the config for the model.
-
-    Args:
-        config (Dict[str, Any]): Config for the model
-
-    Raises:
-        AssertionError: If the config is missing any of the required keys
-                        OR if save_model is true and model_path is not provided
-    """
-
-    expected_keys = {
-        "model_tokenizer_name",
-        "tokenizer_kwargs",
-        "model_kwargs",
-        "optimizer",
-        "optimizer_kwargs",
-    }
-
-    missing_keys = expected_keys - set(config.keys())
-    assert not missing_keys, f"Missing keys: {missing_keys}"
-
-    if "save_model" in config:
-        assert (
-            "model_path" in config
-        ), "if save_model is true, you need to provide a path"
+EXPECTED_KEYS = {
+    "model_tokenizer_name",
+    "tokenizer_kwargs",
+    "model_kwargs",
+    "optimizer",
+    "optimizer_kwargs",
+}
 
 
 def train(
@@ -75,10 +56,10 @@ def train(
         training_logger (Optional[bm.SupportsLogging], optional): Logger to use for logging metrics, parameters, and figures. Defaults to None.
 
     Raises:
-        AssertionError: if the config is fails validation in validate_config()
+        AssertionError: if the config is fails validation in bm.validate_config()
     """
 
-    validate_config(config)
+    bm.validate_config(EXPECTED_KEYS, config)
 
     training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
 
@@ -100,22 +81,9 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
         None
     """
 
-    validate_config(config)
+    bm.validate_config(EXPECTED_KEYS, config)
 
     raise NotImplementedError()
-
-
-def convert_to_T(T: type, vals: List[str]) -> List["T"]:
-    """Converts a list of values to a list of type T.
-
-    Args:
-        T (type): Type to convert to
-        vals (List[str]): List of values to convert
-
-    Returns:
-        List[float]: List of converted values
-    """
-    return [T(x) for x in vals]
 
 
 def tokenize_and_align_labels(
@@ -239,7 +207,7 @@ def convert_dataset(
         Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: Converted dataset inputs and labels
     """
 
-    convert_f = partial(convert_to_T, int)
+    convert_f = partial(bm.convert_to_T, int)
 
     dataset = (
         dataset.map(
@@ -478,11 +446,8 @@ def is_special_token(token: str) -> bool:
         bool: Whether the token is a special token
     """
 
-    return (
-        token.startswith("[")
-        and token.endswith("]")
-        or token.startswith("<")
-        and token.endswith(">")
+    return (token.startswith("[") and token.endswith("]")) or (
+        token.startswith("<") and token.endswith(">")
     )
 
 
@@ -527,7 +492,6 @@ class GenericModel1(bm.Model):
     def get_model_objects(
         self, config: Dict[str, Any], include_optimizer: bool
     ) -> None:
-        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         tokenizer = tfs.AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"], **config.get("tokenizer_kwargs", {})
@@ -543,7 +507,7 @@ class GenericModel1(bm.Model):
             config["model_tokenizer_name"], **config.get("model_kwargs", {})
         )
 
-        print("Model linear layer size:", model.config.hidden_size)
+        logger.info("Model linear layer size:", model.config.hidden_size)
         linear = torch.nn.Linear(
             model.config.hidden_size,
             model.config.hidden_size,
@@ -556,7 +520,7 @@ class GenericModel1(bm.Model):
         # then it is a model that is being pulled from huggingface and we'll
         # keep the random weights
         if os.path.exists(config["model_tokenizer_name"]):
-            print(
+            logger.info(
                 "Loading pretrained linear layer from:",
                 os.path.join(config["model_tokenizer_name"], "linear.bin"),
             )
@@ -564,9 +528,6 @@ class GenericModel1(bm.Model):
                 torch.load(os.path.join(config["model_tokenizer_name"], "linear.bin")),
                 strict=True,
             )
-
-        # model.to(device)
-        # linear.to(device)
 
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
@@ -640,8 +601,6 @@ class GenericModel1(bm.Model):
 
         support_tokens = np.load(path)  # [n, embed_dim]
 
-        # print("getting", n_samples, "from", path, support_tokens.shape)
-
         sample_idxs = np.random.choice(np.arange(support_tokens.shape[0]), n_samples)
 
         support_tokens = np.mean(
@@ -697,16 +656,6 @@ class GenericModel1(bm.Model):
 
             datasets = []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
-                # masked_embedding = torch.from_numpy(self.get_support_mask_embed(
-                #     config["support_mask_embedding_path"],
-                #     config["n_support_samples"],
-                # )).to(device) # [1,     1,     embed_dim]
-
-                # no_mask_embedding = torch.from_numpy(self.get_support_mask_embed(
-                #     config["support_no_mask_embedding_path"],
-                #     config["n_support_samples"],
-                # )).to(device) # [1,     1,     embed_dim]
-
                 batch = tokenizer(
                     [b.split() for b in _batch],
                     return_tensors="pt",
@@ -734,12 +683,6 @@ class GenericModel1(bm.Model):
                     scale_cos_sim
                 )  # [batch, token]
 
-                # token_non_classification = 1 - torch.nn.functional.sigmoid(
-                #     torch.nn.functional.cosine_similarity(
-                #         output_embedding, no_mask_embedding, dim=-1
-                #     ) *  10
-                # ) # [batch, token]
-
                 # Not sure why they do this  ===================================
                 # This isn't documented in the paper, but it's in the code
                 token_classification = (
@@ -750,11 +693,6 @@ class GenericModel1(bm.Model):
                 )  # [batch, token]
                 merged_classifications = 0.5 * (
                     token_classification + token_non_classification
-                )
-                # merged_classifications = token_classification
-
-                merged_classifications = (
-                    merged_classifications  # * batch.attention_mask.cpu().numpy()
                 )
                 # Not sure why they do this  ===================================
 

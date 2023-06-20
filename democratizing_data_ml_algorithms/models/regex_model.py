@@ -34,7 +34,7 @@ def train(
     config: Dict[str, Any],
     training_logger: Optional[bm.SupportsLogging] = None,
 ) -> None:
-    pass
+    raise NotImplementedError("RegexModel does not support training")
 
 
 def validate(repository: Repository, config: Dict[str, Any] = dict()) -> None:
@@ -148,7 +148,7 @@ class RegexModel(bm.Model):
         config: Dict[str, Any],
         exp_logger: bm.SupportsLogging,
     ) -> None:
-        pass
+        raise NotImplementedError("RegexModel does not support training")
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         def infer_f(text: str) -> str:

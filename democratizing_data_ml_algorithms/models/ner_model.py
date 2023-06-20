@@ -6,8 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 import datasets as ds
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import spacy
@@ -192,6 +190,8 @@ def prepare_batch(
 
 
 def lbl_to_color(lbl):
+    import matplotlib.colors as mcolors
+
     value = 1 - lbl[0]
     saturation = max(lbl[1], lbl[2]) - min(lbl[1], lbl[2])
     BLUE = 240 / 360
@@ -206,6 +206,7 @@ def color_text_figure(tokens, colors_true, colors_pred):
     # print("tokens", tokens)
     # print("colors_true", colors_true)
     # print("colors_pred", colors_pred)
+    import matplotlib.pyplot as plt
 
     f, ax = plt.subplots(figsize=(10, 1))
     ax.set_title(

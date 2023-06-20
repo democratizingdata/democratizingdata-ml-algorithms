@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Set, Union
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -19,7 +19,7 @@ NOT_IMPLEMENTED = "You need to implement a function called {0}. It should have t
 
 
 class MockLRScheduler:
-    """Mock learning rate scheduler for use in prtotcols/tests"""
+    """Mock learning rate scheduler for use in protocol/tests"""
 
     def step(self) -> None:
         ...
@@ -83,6 +83,35 @@ class SupportsLogging(Protocol):
             str: Unique id associated with this logger/experiment
         """
         ...
+
+
+def validate_config(
+    expected_keys: Union[Set[str], List[str]], config: Dict[str, Any]
+) -> None:
+    """Validates a configuration dictionary.
+
+    Args:
+        config (Dict[str, Any]): Dictionary of configuration parameters
+
+    Raises:
+        AssertionError: If the configuration is invalid
+    """
+
+    missing_keys = set(expected_keys) - set(config.keys())
+    assert not missing_keys, f"Missing keys: {missing_keys}"
+
+
+def convert_to_T(T: type, vals: List[str]) -> List["T"]:
+    """Converts a list of values to a list of type T.
+
+    Args:
+        T (type): Type to convert to
+        vals (List[str]): List of values to convert
+
+    Returns:
+        List[float]: List of converted values
+    """
+    return [T(x) for x in vals]
 
 
 def flatten_hparams_for_logging(dictionary: Dict[str, Any]) -> Dict[str, Any]:
