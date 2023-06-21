@@ -1,58 +1,99 @@
-# This model is a baseline that uses the a regext to extract entities from the
-# text. This model will extract entitites that are not datasets, but the goal
-# is high recall. This model could be combined with an entity classifier to
-# increast the precision of the model.
-import json
+# BSD 3-Clause License
+
+# Copyright (c) 2023, AUTHORS
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"""Extract entities from text using a regex.
+
+This model is a baseline that uses the a regext to extract entities from the
+text. This model will extract entitites that are not datasets, but the goal
+is high recall. This model could be combined with an entity classifier to
+increast the precision of the model.
+
+Example:
+
+    >>> import pandas as pd
+    >>> import democratizing_data_ml_algorithms.models.regex_model as rm
+    >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
+    >>> config = {"regex_pattern": r"entity"}
+    >>> df = rm.inference(config, df)
+"""
+
+
 import logging
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import regex as re
-from pandarallel import pandarallel
 from unidecode import unidecode
 from tqdm import tqdm
 
 import democratizing_data_ml_algorithms.models.base_model as bm
-import democratizing_data_ml_algorithms.evaluate.model as em
-from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.data.repository as repo
 
 logger = logging.getLogger("RegexModel")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-
-    expected_keys = [
-        "eval_path",
-    ]
-
-    for key in expected_keys:
-        assert key in config, f"Missing key {key} in config"
-
+EXPECTED_KEYS = {}
 
 def train(
-    repository: Repository,
+    repository: repo.Repository,
     config: Dict[str, Any],
     training_logger: Optional[bm.SupportsLogging] = None,
 ) -> None:
+    """Top level function for training. NOT IMPLEMENTED."""
+
     raise NotImplementedError("RegexModel does not support training")
 
 
-def validate(repository: Repository, config: Dict[str, Any] = dict()) -> None:
-    model = RegexModel(config)
-    model_evaluation = em.evaluate_model(repository, model, config)
-
-    print(model_evaluation)
-
-    logger.info(f"Saving evaluation to {config['eval_path']}")
-    with open(config["eval_path"], "w") as f:
-        json.dump(model_evaluation.to_json(), f)
-
-
 def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    """Top level function for inference.
+
+    Args:
+        config (Dict[str, Any]): Dictionary of inference configuration
+        df (pd.DataFrame): Dataframe to perform inference on. The dataframe
+                           should have a column called "text" that contains
+                           the text to perform inference on.
+
+    Returns:
+        pd.DataFrame: Dataframe with inference results. There will be two
+                      new columns added to the dataframe: "model_prediction"
+                      and "prediction_snippet". The "model_prediction" column
+                      will contain the extracted entities separated by a "|".
+                      The "prediction_snippet" column will contain the
+                      sentence that the entity was extracted from.
+    """
+
+    bm.validate_config(EXPECTED_KEYS, config)
     model = RegexModel(config)
     return model.inference(df)
 
 
+# Default regex pattern for extracting entities from text ======================
 CONNECTING_WORDS = [
     "and",
     "for",
@@ -118,10 +159,49 @@ ENTITY_PATTERN = "".join(
         ")",
     ]
 )
+# Default regex pattern for extracting entities from text ======================
 
 
 class RegexModel(bm.Model):
+    """Extract entities from text using a regex.
+
+    This class will extract entities from text using a regex pattern. The
+    regex pattern can be configured using the "regex_pattern" key in the
+    configuration dictionary. The default regex pattern is defined above
+    as ENTITY_PATTERN. The regex pattern is compiled using the regex library
+    and the compiled pattern is stored in the `entity_pattern` attribute.
+
+    Optionally, the regex pattern can be configured using the "keywords" key
+    in the configuration dictionary. The "keywords" key should be a list of
+    strings. Each string in the list will be converted to a regex pattern
+    that will be used to extract entities from the text. The regex pattern
+    for each keyword is defined as follows:
+
+    -   If the keyword is a single word and it is all caps, then the keyword
+        will not be converted to a regex pattern, it will be treated as an
+        acronym.
+    -   If the keyword is a single word and it is not all caps, then the
+        keyword will be converted to a regex pattern that matches the keyword,
+        ignoring the case for the keyword.
+    -   If the keyword is multiple words, then the keyword will be converted
+        to a regex pattern that matches the keyword, ignoring the case for
+        the first letter of each word in the keyword.
+
+    Example:
+        >>> import pandas as pd
+        >>> import democratizing_data_ml_algorithms.models.regex_model as rm
+        >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
+        >>> config = {"regex_pattern": r"entity"}
+        >>> df = rm.inference(config, df)
+
+    Attributes:
+        entity_pattern (re.Pattern): Compiled regex pattern for extracting entities
+
+    """
+
     def __init__(self, config: Dict[str, str]) -> None:
+        """Initializes the RegexModel using a regex pattern or keywords."""
+
         regex_pattern = (
             config["regex_pattern"] if "regex_pattern" in config else ENTITY_PATTERN
         )
@@ -144,56 +224,81 @@ class RegexModel(bm.Model):
 
     def train(
         self,
-        repository: Repository,
+        repository: repo.Repository,
         config: Dict[str, Any],
         exp_logger: bm.SupportsLogging,
     ) -> None:
         raise NotImplementedError("RegexModel does not support training")
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
-        def infer_f(text: str) -> str:
-            # extract_f = lambda m: m[0] if len(m) > 0 else ""
-            # matches = set(match[0] for match in self.entity_pattern.findall(text))
+        """Performs inference on a dataframe.
 
-            matches = set(
+        Args:
+            config (Dict[str, Any]): Dictionary of inference configuration
+            df (pd.DataFrame): Dataframe to perform inference on there should
+                               be a column called "text" that contains the text
+
+        Returns:
+            pd.DataFrame: Dataframe with inference results. There will be two
+                          new columns added to the dataframe: "model_prediction"
+                          and "prediction_snippet". The "model_prediction" column
+                          will contain the extracted entities separated by a "|".
+                          The "prediction_snippet" column will contain the
+                          sentence that the entity was extracted from.
+        """
+
+        def infer_f(text: str) -> str:
+            matches_snippets = list(
                 map(
-                    lambda m: m[0],
-                    filter(lambda m: len(m) > 0, self.entity_pattern.findall(text)),
+                    lambda match: (
+                        match[0].strip(),
+                        RegexModel.extract_context(text, match),
+                    ),
+                    filter(
+                        lambda m: bool(m), self.entity_pattern.finditer(unidecode(text))
+                    ),
                 )
             )
 
-            matches_with_parens = list(filter(lambda m: "(" in m and ")" in m, matches))
+            matches, snippets = zip(*matches_snippets) if matches_snippets else ([], [])
+            return "|".join(matches), "|".join(snippets)
 
-            # Really Great Data (RGD) -> Really Great Data|RGD
-            def split_parens(m: str) -> str:
-                long_form, short_form = m.split("(")
-                return long_form.strip() + "|" + short_form[:-1]
-
-            split_matches_parens = list(map(split_parens, matches_with_parens))
-
-            return "|".join(list(matches) + split_matches_parens)
-
-        # tqdm.pandas()
-        # pandarallel.initialize(progress_bar=True, use_memory_fs=False)
-        # df["model_prediction"] = df["text"].parallel_apply(infer_f)
-        df["model_prediction"] = df["text"].apply(infer_f)
+        df[["model_prediction", "prediction_snippet"]] = df.apply(
+            lambda x: infer_f(x["text"]),
+            result_type="expand",
+            axis=1,
+        )
 
         return df
 
     @staticmethod
+    def extract_context(text: str, match: re.Match) -> str:
+        """Extracts the sentence that the match was found in."""
+        sentence_boundary = ". "
+        start, end = match.span()
+        sent_start = text.rfind(sentence_boundary, 0, start)
+        sent_end = text.find(sentence_boundary, end, len(text))
+        return text[sent_start + len(sentence_boundary) : sent_end].strip()
+
+    @staticmethod
     def regexify_char(c: str) -> str:
+        """Converts a character to a regex pattern that matches the character."""
         if c.isalpha():
             return f"[{c.upper()}|{c.lower()}]"
         else:
             return c
 
+    @staticmethod
     def regexify_first_char(c: str) -> str:
+        """Converts the first character of a string to a regex pattern that matches the character."""
         if len(c) == 1:
             return RegexModel.regexify_char(c)
         else:
             return RegexModel.regexify_char(c[0]) + c[1:]
 
+    @staticmethod
     def regexify_keyword(keyword: str) -> str:
+        """Converts a keyword to a regex pattern that matches the keyword."""
         tokens = keyword.strip().split()
 
         sub_parens = lambda s: s.replace("(", r"\(").replace(")", r"\)")
@@ -213,6 +318,5 @@ class RegexModel(bm.Model):
 
 if __name__ == "__main__":
     bm.train = train
-    bm.validate = validate
     bm.inference = inference
     bm.main()

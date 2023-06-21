@@ -188,19 +188,6 @@ def train(
     raise NotImplementedError(NOT_IMPLEMENTED.format("train"))
 
 
-def validate(repository: Repository, config: Dict[str, Any]) -> None:
-    """Top level function for validating a model.
-
-    Args:
-        repository (Repository): Repository to use for validation
-        config (Dict[str, Any]): Dictionary of validation configuration
-
-    Returns:
-        None
-    """
-    raise NotImplementedError(NOT_IMPLEMENTED.format("validate"))
-
-
 def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
     """Top level function for inference.
 
