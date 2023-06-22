@@ -41,7 +41,6 @@ KAGGLE_MODEL3_REQUIREMENTS = []
 
 NER_MODEL_REQUIREMENTS = [
     "datasets",
-    "spacy",
     "torch",
     "transformers",
 ]

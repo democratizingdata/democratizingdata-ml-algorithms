@@ -1,20 +1,52 @@
+# BSD 3-Clause License
+
+# Copyright (c) 2023, AUTHORS
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 from functools import partial
-from itertools import filterfalse, islice
+from itertools import filterfalse
 import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-
-import datasets as ds
 import numpy as np
 import pandas as pd
 import spacy
-import torch
-import transformers as tfs
-from transformers import AutoModelForTokenClassification, AutoTokenizer
 from tqdm import tqdm
 
-from datasets.utils.logging import disable_progress_bar
+try:
+    import datasets as ds
+    import torch
+    import transformers as tfs
+    from transformers import AutoModelForTokenClassification, AutoTokenizer
+    from datasets.utils.logging import disable_progress_bar
+except ImportError:
+    raise ImportError("Running NerModel requires extras 'ner_model' or 'all'")
 
 disable_progress_bar()
 
@@ -36,34 +68,19 @@ MODEL_OBJECTS_WITH_OPTIMIZER = Tuple[
 
 logger = logging.getLogger("ner_model")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-    """Validate the config for the model.
-
-    Args:
-        config (Dict[str, Any]): The config for the model.
-
-    Raises:
-        AssertionError: If the config is missing any keys.
-    """
-
-    expected_keys = {
-        "epochs",
-        "model_tokenizer_name",
-        "tokenizer_kwargs",
-        "model_kwargs",
-        "optimizer",
-        "optimizer_kwargs",
-    }
-
-    missing_keys = expected_keys - set(config.keys())
-    assert not missing_keys, f"Missing keys: {missing_keys}"
-
+EXPECTED_KEYS = {
+    "epochs",
+    "model_tokenizer_name",
+    "tokenizer_kwargs",
+    "model_kwargs",
+    "optimizer",
+    "optimizer_kwargs",
+}
 
 def train(
     repository: Repository,
     config: Dict[str, Any],
-    training_logger: Optional[bm.SupportsLogging] = None,
+    training_logger: bm.SupportsLogging,
 ) -> None:
     """Train the model.
 
@@ -76,25 +93,14 @@ def train(
         None
     """
 
-    validate_config(config)
+    bm.validate_config(EXPECTED_KEYS, config)
     training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
     model = NERModel_pytorch()
     model.train(repository, config, training_logger)
 
 
-def validate(repository: Repository, config: Dict[str, Any]) -> None:
-    """Validate the model.
-
-    Args:
-        repository (Repository): The repository containing the data.
-        config (Dict[str, Any]): The config for the model.
-
-        Returns:
-            None
-    """
-
-    validate_config(config)
-    raise NotImplementedError()
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    pass
 
 
 # ==============================================================================
@@ -630,7 +636,7 @@ class NERModel_pytorch(bm.Model):
 
 if __name__ == "__main__":
     bm.train = train
-    bm.validate = validate
+    bm.inference = inference
     bm.main()
 
     # import src.data.kaggle_repository as kr

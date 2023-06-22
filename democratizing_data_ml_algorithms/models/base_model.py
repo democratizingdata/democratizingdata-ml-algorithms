@@ -1,4 +1,5 @@
 import json
+import warnings
 from typing import Any, Dict, List, Optional, Protocol, Set, Union
 
 import matplotlib.pyplot as plt
@@ -21,8 +22,13 @@ NOT_IMPLEMENTED = "You need to implement a function called {0}. It should have t
 class MockLRScheduler:
     """Mock learning rate scheduler for use in protocol/tests"""
 
+    def __init__(self) -> None:
+        self.warned = False
+
     def step(self) -> None:
-        ...
+        if not self.warned:
+            self.warned = True
+            warnings.warn("Using the mock learning rate scheduler doesn't do anything.")
 
 
 class SupportsLogging(Protocol):
