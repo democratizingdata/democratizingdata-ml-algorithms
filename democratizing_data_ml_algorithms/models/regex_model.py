@@ -90,7 +90,7 @@ def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
     bm.validate_config(EXPECTED_KEYS, config)
     model = RegexModel(config)
-    return model.inference(df)
+    return model.inference(config, df)
 
 
 # Default regex pattern for extracting entities from text ======================
@@ -202,10 +202,8 @@ class RegexModel(bm.Model):
     def __init__(self, config: Dict[str, str]) -> None:
         """Initializes the RegexModel using a regex pattern or keywords."""
 
-        regex_pattern = (
-            config["regex_pattern"] if "regex_pattern" in config else ENTITY_PATTERN
-        )
-        keywords = config["keywords"] if "keywords" in config else []
+        regex_pattern  = config.get("regex_pattern", ENTITY_PATTERN)
+        keywords = config.get("keywords", [])
 
         if keywords:
             keyword_pattern = r"|".join(
@@ -278,7 +276,7 @@ class RegexModel(bm.Model):
         start, end = match.span()
         sent_start = text.rfind(sentence_boundary, 0, start)
         sent_end = text.find(sentence_boundary, end, len(text))
-        return text[sent_start + len(sentence_boundary) : sent_end].strip()
+        return text[sent_start + len(sentence_boundary) : sent_end+1].strip()
 
     @staticmethod
     def regexify_char(c: str) -> str:
@@ -289,12 +287,12 @@ class RegexModel(bm.Model):
             return c
 
     @staticmethod
-    def regexify_first_char(c: str) -> str:
+    def regexify_first_char(text: str) -> str:
         """Converts the first character of a string to a regex pattern that matches the character."""
-        if len(c) == 1:
-            return RegexModel.regexify_char(c)
+        if len(text) == 1:
+            return RegexModel.regexify_char(text)
         else:
-            return RegexModel.regexify_char(c[0]) + c[1:]
+            return RegexModel.regexify_char(text[0]) + text[1:]
 
     @staticmethod
     def regexify_keyword(keyword: str) -> str:
@@ -307,7 +305,7 @@ class RegexModel(bm.Model):
             # If this is a single word and its all caps, then we don't want to
             # regexify it, it is an acronym
             if keyword.isupper():
-                return keyword
+                return sub_parens(keyword)
             else:
                 return sub_parens("".join(list(map(RegexModel.regexify_char, keyword))))
         else:
@@ -316,7 +314,7 @@ class RegexModel(bm.Model):
             )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     bm.train = train
     bm.inference = inference
     bm.main()
