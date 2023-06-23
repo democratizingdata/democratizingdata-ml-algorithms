@@ -35,9 +35,11 @@ import democratizing_data_ml_algorithms.tests.utils as utils
 
 import democratizing_data_ml_algorithms.models.regex_model as regex_model
 
+
 def test_train_fails():
     with pytest.raises(NotImplementedError):
         regex_model.train(None, None, None)
+
 
 def test_inference():
     sample_df = utils.get_trivial_sample_dataframe()
@@ -46,6 +48,7 @@ def test_inference():
 
     assert outs["model_prediction"].values[0] == "Really Great Dataset"
 
+
 def test_regex_model_inference():
     sample_df = utils.get_trivial_sample_dataframe()
 
@@ -53,42 +56,44 @@ def test_regex_model_inference():
 
     assert outs["model_prediction"].values[0] == "Really Great Dataset"
 
+
 def test_regex_model_train_fails():
     with pytest.raises(NotImplementedError):
         model = regex_model.RegexModel({})
         model.train(None, None, None)
+
 
 def test_regex_model_init_default():
     config = {}
     model = regex_model.RegexModel(config)
     assert model.entity_pattern.pattern == regex_model.ENTITY_PATTERN
 
+
 def test_regex_model_init_custom_regex():
-    config = {
-        "regex_pattern": r"(\b[A-Z][a-z]+\b)"
-    }
+    config = {"regex_pattern": r"(\b[A-Z][a-z]+\b)"}
     model = regex_model.RegexModel(config)
     assert model.entity_pattern.pattern == config["regex_pattern"]
 
+
 def test_regex_model_init_custom_keywords():
-    config = {
-        "regex_pattern": "",
-        "keywords": ["foo", "Bar", "USA", "Data Set"]
-    }
+    config = {"regex_pattern": "", "keywords": ["foo", "Bar", "USA", "Data Set"]}
     model = regex_model.RegexModel(config)
 
     expected = r"([F|f][O|o][O|o]|[B|b][A|a][R|r]|USA|[D|d]ata [S|s]et)"
 
     assert model.entity_pattern.pattern == expected
 
+
 def test_regex_model_init_custom_keywords_with_regex():
     config = {
         "regex_pattern": r"(\b[A-Z][a-z]+\b)",
-        "keywords": ["foo", "Bar", "USA", "Data Set"]
+        "keywords": ["foo", "Bar", "USA", "Data Set"],
     }
     model = regex_model.RegexModel(config)
 
-    expected = r"(\b[A-Z][a-z]+\b|([F|f][O|o][O|o]|[B|b][A|a][R|r]|USA|[D|d]ata [S|s]et))"
+    expected = (
+        r"(\b[A-Z][a-z]+\b|([F|f][O|o][O|o]|[B|b][A|a][R|r]|USA|[D|d]ata [S|s]et))"
+    )
 
     assert model.entity_pattern.pattern == expected
 
@@ -100,18 +105,22 @@ def test_regex_model_extract_context():
     match = re.search("target", in_text)
     assert regex_model.RegexModel.extract_context(in_text, match) == expected_out
 
+
 def test_regex_model_regixfy_char():
     assert regex_model.RegexModel.regexify_char("a") == r"[A|a]"
     assert regex_model.RegexModel.regexify_char("A") == r"[A|a]"
     assert regex_model.RegexModel.regexify_char("1") == r"1"
 
+
 def test_regex_model_regexify_first_char():
     assert regex_model.RegexModel.regexify_first_char("a") == r"[A|a]"
     assert regex_model.RegexModel.regexify_first_char("Apple") == r"[A|a]pple"
 
+
 def test_regex_model_regexify_keyword():
     assert regex_model.RegexModel.regexify_keyword("USA") == r"USA"
     assert regex_model.RegexModel.regexify_keyword("(USA)") == r"\(USA\)"
-    assert regex_model.RegexModel.regexify_keyword("apple") == r"[A|a][P|p][P|p][L|l][E|e]"
+    assert (
+        regex_model.RegexModel.regexify_keyword("apple") == r"[A|a][P|p][P|p][L|l][E|e]"
+    )
     assert regex_model.RegexModel.regexify_keyword("Foo Bar") == r"[F|f]oo [B|b]ar"
-

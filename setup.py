@@ -62,6 +62,7 @@ ALL = (
 DEVELOPMENT_REQUIREMENTS = [
     "black",
     "pytest",
+    "pytest-cov",
 ]
 
 setup(

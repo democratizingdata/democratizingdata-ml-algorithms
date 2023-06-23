@@ -30,7 +30,9 @@
 
 """Helpers for testing."""
 
+from typing import Any, List
 import pandas as pd
+
 
 def get_trivial_sample_dataframe() -> pd.DataFrame:
     """Returns a trivial sample dataframe.
@@ -73,9 +75,7 @@ def get_trivial_sample_dataframe() -> pd.DataFrame:
                     "technologizes things. We also perform utilities. The kind of "
                     "utilities that provides utilities. We also perform "
                     "hospitality. The kind of hospitality that hosts things. "
-
                     "We used the Really Great Dataset for our analysis in this work. "
-
                     "We also perform travel. The kind of travel that travels things. "
                     "We also perform entertainment. The kind of entertainment that "
                     "entertains things. We also perform food. The kind of food "
@@ -105,6 +105,32 @@ def get_trivial_sample_dataframe() -> pd.DataFrame:
                 )
             ],
             "label": ["dataset"],
-            "snippet": ["We used the dataset for our analysis in this work."]
+            "snippet": ["We used the dataset for our analysis in this work."],
         }
     )
+
+class dotdict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+    def __eq__(self, other: Any) -> bool:
+        for key in filter(lambda k: k != "word_ids", self.keys()):
+            if self[key] != other[key]:
+                return False
+
+def mock_tokenize_f(text:str) -> dotdict:
+
+    tokens = [t.split() for t in text]
+
+    def word_ids_f(batch_index:int) -> List[int]:
+        return list(range(len(tokens[batch_index])))
+
+    tokenizer_result = dotdict(dict(
+        tokens = tokens,
+        word_ids = word_ids_f,
+
+    ))
+
+    return tokenizer_result

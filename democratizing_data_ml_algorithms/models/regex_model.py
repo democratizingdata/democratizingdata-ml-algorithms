@@ -60,6 +60,7 @@ logger = logging.getLogger("RegexModel")
 
 EXPECTED_KEYS = {}
 
+
 def train(
     repository: repo.Repository,
     config: Dict[str, Any],
@@ -202,7 +203,7 @@ class RegexModel(bm.Model):
     def __init__(self, config: Dict[str, str]) -> None:
         """Initializes the RegexModel using a regex pattern or keywords."""
 
-        regex_pattern  = config.get("regex_pattern", ENTITY_PATTERN)
+        regex_pattern = config.get("regex_pattern", ENTITY_PATTERN)
         keywords = config.get("keywords", [])
 
         if keywords:
@@ -276,7 +277,7 @@ class RegexModel(bm.Model):
         start, end = match.span()
         sent_start = text.rfind(sentence_boundary, 0, start)
         sent_end = text.find(sentence_boundary, end, len(text))
-        return text[sent_start + len(sentence_boundary) : sent_end+1].strip()
+        return text[sent_start + len(sentence_boundary) : sent_end + 1].strip()
 
     @staticmethod
     def regexify_char(c: str) -> str:

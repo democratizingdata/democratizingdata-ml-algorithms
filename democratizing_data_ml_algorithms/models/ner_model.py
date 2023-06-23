@@ -77,6 +77,7 @@ EXPECTED_KEYS = {
     "optimizer_kwargs",
 }
 
+
 def train(
     repository: Repository,
     config: Dict[str, Any],
@@ -125,24 +126,30 @@ def convert_ner_tags_to_ids(
     return [tag_f(ner_tags) for ner_tags in ner_tags]
 
 
-def convert_sample_ner_tages_to_ids(
+def convert_sample_ner_tags_to_ids(
     lbl_to_id: Dict[str, int], sample: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Converts the NER tags in a sample to NER tag ids.
 
     Args:
         lbl_to_id (Dict[str, int]): A mapping from NER tag to NER tag id.
-        sample (Dict[str, Any]): A sample.
+        sample (Dict[str, Any]): A sample should have a key "labels" with a
+                                 value of a list of NER tags.
+
 
     Returns:
-        Dict[str, Any]: A sample with NER tags converted to NER tag ids.
+        Dict[str, Any]: A sample with NER tags converted to NER tag ids. Replacing
+                        the key "labels" in place.
     """
 
     sample["labels"] = convert_ner_tags_to_ids(lbl_to_id, sample["labels"])
     return sample
 
 
-def tokenize_and_align_labels(tokenizer_f, examples):
+def tokenize_and_align_labels(
+    tokenizer_f:tfs.tokenization_utils_base.PreTrainedTokenizerBase,
+    examples: Dict[str, Any],
+) -> Dict[str, Any]:
     """Tokenize and align labels.
 
     Args:
@@ -175,7 +182,7 @@ def prepare_batch(
     batch: pd.DataFrame,
 ) -> Dict[str, torch.Tensor]:
 
-    ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
+    ner_to_id_f = partial(convert_sample_ner_tags_to_ids, lbl_to_id)
     tokenize_f = partial(
         tokenize_and_align_labels,
         partial(
@@ -208,7 +215,7 @@ def lbl_to_color(lbl):
 
 # based on
 # https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
-def color_text_figure(tokens, colors_true, colors_pred):
+def color_text_figure(tokens, colors_true, colors_pred):  # pragma: no cover
     # print("tokens", tokens)
     # print("colors_true", colors_true)
     # print("colors_pred", colors_pred)
