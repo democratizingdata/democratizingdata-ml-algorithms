@@ -32,7 +32,14 @@ from typing import Any, Dict
 
 import numpy as np
 import pytest
+import torch
+import transformers as tfs
+from transformers import AutoModelForTokenClassification, AutoTokenizer
 
+import democratizing_data_ml_algorithms.models.base_model as bm
+from democratizing_data_ml_algorithms.models.spacy_default_segementizer import (
+    DefaultSpacySegmentizer,
+)
 import democratizing_data_ml_algorithms.tests.utils as utils
 import democratizing_data_ml_algorithms.models.ner_model as ner_model
 
@@ -90,7 +97,7 @@ def test_convert_sample_ner_tags_to_ids():
 
 
 def test_tokenize_and_align_labels():
-    #TODO: This needs to be more carefully tested.
+    # TODO: This needs to be more carefully tested.
 
     sample = dict(
         text=[
@@ -122,9 +129,7 @@ def test_lbl_to_color():
 
     print(actual, expected)
 
-    assert np.testing.assert_equal(actual, expected)
-
-
+    np.testing.assert_equal(actual, expected)
 
 
 def test_color_text_figure():
@@ -132,12 +137,237 @@ def test_color_text_figure():
 
 
 def test_merge_tokens_w_classifications():
-    pass
+
+    tokens = ["This", "is", "a", "data", "##set", "."]
+    classifications = [0, 0, 0, 1, 1, 0]
+
+    actual = ner_model.merge_tokens_w_classifications(tokens, classifications)
+
+    expected = [
+        ("This", 0),
+        ("is", 0),
+        ("a", 0),
+        ("dataset", 1),
+        (".", 0),
+    ]
+
+    assert actual == expected
 
 
 def test_is_special_token():
+    assert ner_model.is_special_token("[CLS]") == True
+    assert ner_model.is_special_token("[SEP]") == True
+    assert ner_model.is_special_token("[PAD]") == True
+    assert ner_model.is_special_token("[UNK]") == True
+    assert ner_model.is_special_token("[MASK]") == True
+    assert ner_model.is_special_token("This") == False
+
+
+def test_high_probablity_token_groups_thresholds():
+
+    token_classifications = [
+        ("We", 0.0),
+        ("used", 0.0),
+        ("the", 0.0),
+        ("Really", 0.7),
+        ("Great", 0.8),
+        ("Dataset", 0.9),
+        ("for", 0.0),
+        ("our", 0.0),
+        ("study", 0.0),
+        (".", 0.0),
+    ]
+
+    actual_05 = ner_model.high_probablity_token_groups(token_classifications, 0.5)
+    actual_06 = ner_model.high_probablity_token_groups(token_classifications, 0.6)
+    actual_07 = ner_model.high_probablity_token_groups(token_classifications, 0.7)
+    actual_08 = ner_model.high_probablity_token_groups(token_classifications, 0.8)
+    actual_09 = ner_model.high_probablity_token_groups(token_classifications, 0.9)
+    actual_10 = ner_model.high_probablity_token_groups(token_classifications, 1.0)
+
+    expected_05 = [[("Really", 0.7), ("Great", 0.8), ("Dataset", 0.9)]]
+    expected_06 = [[("Really", 0.7), ("Great", 0.8), ("Dataset", 0.9)]]
+    expected_07 = [[("Really", 0.7), ("Great", 0.8), ("Dataset", 0.9)]]
+    expected_08 = [[("Great", 0.8), ("Dataset", 0.9)]]
+    expected_09 = [[("Dataset", 0.9)]]
+    expected_10 = []
+
+    assert actual_05 == expected_05
+    assert actual_06 == expected_06
+    assert actual_07 == expected_07
+    assert actual_08 == expected_08
+    assert actual_09 == expected_09
+    assert actual_10 == expected_10
+
+
+def test_high_probablity_token_groups_mulitple_groups():
+
+    token_classifications = [
+        ("We", 0.0),
+        ("used", 0.0),
+        ("the", 0.0),
+        ("Really", 1.0),
+        ("Great", 1.0),
+        ("Dataset", 1.0),
+        ("for", 0.0),
+        ("our", 0.0),
+        ("study", 0.0),
+        (".", 0.0),
+        ("We", 0.0),
+        ("used", 0.0),
+        ("the", 0.0),
+        ("Really", 1.0),
+        ("Great", 1.0),
+        ("Dataset", 1.0),
+        ("Again", 1.0),
+        ("for", 0.0),
+        ("our", 0.0),
+        ("study", 0.0),
+        (".", 0.0),
+    ]
+
+    expected = [
+        [("Really", 1.0), ("Great", 1.0), ("Dataset", 1.0)],
+        [("Really", 1.0), ("Great", 1.0), ("Dataset", 1.0), ("Again", 1.0)],
+    ]
+
+    actual = ner_model.high_probablity_token_groups(token_classifications, 0.5)
+
+    assert actual == expected
+
+
+@pytest.mark.uses_model_params
+def test_ner_model_pytorch_get_model_objects():
+
+    include_optimizer = False
+    config = dict(
+        model_tokenizer_name="distilbert-base-uncased",
+    )
+
+    actual = ner_model.NERModel_pytorch().get_model_objects(config, include_optimizer)
+
+    expected_tokenizer = AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
+    expected = (
+        AutoModelForTokenClassification.from_pretrained(
+            config["model_tokenizer_name"],
+            num_labels=len(ner_model.NERModel_pytorch.lbl_to_id),
+            id2label=ner_model.NERModel_pytorch.id_to_lbl,
+            label2id=ner_model.NERModel_pytorch.lbl_to_id,
+        ),
+        expected_tokenizer,
+        tfs.data.data_collator.DataCollatorForTokenClassification(
+            expected_tokenizer,
+            return_tensors="pt",
+        ),
+    )
+
+    assert list(map(type, actual)) == list(map(type, expected))
+
+
+@pytest.mark.uses_model_params
+def test_ner_model_pytorch_get_model_objects_with_optimizer():
+
+    include_optimizer = True
+    config = dict(
+        model_tokenizer_name="distilbert-base-uncased",
+        optimizer="torch.optim.AdamW",
+    )
+
+    actual = ner_model.NERModel_pytorch().get_model_objects(config, include_optimizer)
+
+    expected_model = AutoModelForTokenClassification.from_pretrained(
+        config["model_tokenizer_name"],
+        num_labels=len(ner_model.NERModel_pytorch.lbl_to_id),
+        id2label=ner_model.NERModel_pytorch.id_to_lbl,
+        label2id=ner_model.NERModel_pytorch.lbl_to_id,
+    )
+    expected_tokenizer = AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
+    expected = (
+        expected_model,
+        expected_tokenizer,
+        tfs.data.data_collator.DataCollatorForTokenClassification(
+            expected_tokenizer,
+            return_tensors="pt",
+        ),
+        torch.optim.AdamW(expected_model.parameters()),
+        bm.MockLRScheduler(),
+    )
+
+    assert list(map(type, actual)) == list(map(type, expected))
+
+
+@pytest.mark.uses_model_params
+def test_ner_model_pytorch_get_model_objects_with_optimizer_with_scheduler():
+    include_optimizer = True
+    config = dict(
+        model_tokenizer_name="distilbert-base-uncased",
+        optimizer="torch.optim.AdamW",
+        scheduler="torch.optim.lr_scheduler.ConstantLR",
+    )
+
+    actual = ner_model.NERModel_pytorch().get_model_objects(config, include_optimizer)
+
+    expected_model = AutoModelForTokenClassification.from_pretrained(
+        config["model_tokenizer_name"],
+        num_labels=len(ner_model.NERModel_pytorch.lbl_to_id),
+        id2label=ner_model.NERModel_pytorch.id_to_lbl,
+        label2id=ner_model.NERModel_pytorch.lbl_to_id,
+    )
+    expected_optimizer = torch.optim.AdamW(expected_model.parameters())
+    expected_tokenizer = AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
+    expected = (
+        expected_model,
+        expected_tokenizer,
+        tfs.data.data_collator.DataCollatorForTokenClassification(
+            expected_tokenizer,
+            return_tensors="pt",
+        ),
+        expected_optimizer,
+        torch.optim.lr_scheduler.ConstantLR(expected_optimizer),
+    )
+
+    assert list(map(type, actual)) == list(map(type, expected))
+
+
+def test_ner_model_pytorch_resolve_segmentizer_config_str():
+    config = dict(
+        segmentizer="democratizing_data_ml_algorithms.models.spacy_default_segementizer.DefaultSpacySegmentizer",
+    )
+
+    actual = ner_model.NERModel_pytorch().resolve_segmentizer(config)
+
+    expected = DefaultSpacySegmentizer()
+
+    assert type(actual) == type(expected)
+
+
+def test_ner_model_pytorch_resolve_segmentizer_config_class():
+    config = dict(
+        segmentizer=DefaultSpacySegmentizer,
+    )
+
+    actual = ner_model.NERModel_pytorch().resolve_segmentizer(config)
+
+    expected = DefaultSpacySegmentizer()
+
+    assert type(actual) == type(expected)
+
+
+def test_ner_model_pytorch_resolve_segmentizer_default():
+    config = dict()
+    actual = ner_model.NERModel_pytorch().resolve_segmentizer(config)
+    expected = DefaultSpacySegmentizer()
+
+    assert type(actual) == type(expected)
+
+
+def test_ner_model_pytorch_inference():
     pass
 
 
-def test_high_probablity_token_groups():
+def test_ner_model_pytorch_filter_by_idx():
+    pass
+
+
+def test_ner_model_pytorch_train():
     pass

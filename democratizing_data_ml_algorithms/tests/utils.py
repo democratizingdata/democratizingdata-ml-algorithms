@@ -109,8 +109,10 @@ def get_trivial_sample_dataframe() -> pd.DataFrame:
         }
     )
 
+
 class dotdict(dict):
     """dot.notation access to dictionary attributes"""
+
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
@@ -120,17 +122,19 @@ class dotdict(dict):
             if self[key] != other[key]:
                 return False
 
-def mock_tokenize_f(text:str) -> dotdict:
+
+def mock_tokenize_f(text: str) -> dotdict:
 
     tokens = [t.split() for t in text]
 
-    def word_ids_f(batch_index:int) -> List[int]:
+    def word_ids_f(batch_index: int) -> List[int]:
         return list(range(len(tokens[batch_index])))
 
-    tokenizer_result = dotdict(dict(
-        tokens = tokens,
-        word_ids = word_ids_f,
-
-    ))
+    tokenizer_result = dotdict(
+        dict(
+            tokens=tokens,
+            word_ids=word_ids_f,
+        )
+    )
 
     return tokenizer_result

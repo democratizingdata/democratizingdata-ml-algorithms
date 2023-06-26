@@ -32,12 +32,17 @@ from functools import partial
 from itertools import filterfalse
 import logging
 import os
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import spacy
 from tqdm import tqdm
+
+from democratizing_data_ml_algorithms.models.text_segmentizer_protocol import (
+    TextSegmentizer,
+)
 
 try:
     import datasets as ds
@@ -51,6 +56,10 @@ except ImportError:
 disable_progress_bar()
 
 from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.models.spacy_default_segementizer import (
+    DefaultSpacySegmentizer,
+)
+
 import democratizing_data_ml_algorithms.models.base_model as bm
 
 MODEL_OBJECTS = Tuple[
@@ -101,7 +110,9 @@ def train(
 
 
 def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
-    pass
+    bm.validate_config(EXPECTED_KEYS, config)
+    model = NERModel_pytorch()
+    return model.inference(config, df)
 
 
 # ==============================================================================
@@ -147,7 +158,7 @@ def convert_sample_ner_tags_to_ids(
 
 
 def tokenize_and_align_labels(
-    tokenizer_f:tfs.tokenization_utils_base.PreTrainedTokenizerBase,
+    tokenizer_f: tfs.tokenization_utils_base.PreTrainedTokenizerBase,
     examples: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Tokenize and align labels.
@@ -290,11 +301,6 @@ class NERModel_pytorch(bm.Model):
     lbl_to_id = {"O": 0, "B-DAT": 1, "I-DAT": 2}
     id_to_lbl = {v: k for k, v in lbl_to_id.items()}
 
-    def __init__(
-        self,
-    ):
-        self.nlp = spacy.load("en_core_web_sm")
-
     def get_model_objects(
         self,
         config: Dict[str, Any],
@@ -322,12 +328,12 @@ class NERModel_pytorch(bm.Model):
 
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
-                model.parameters(), **config["optimizer_kwargs"]
+                model.parameters(), **config.get("optimizer_kwargs", {})
             )
 
             if "scheduler" in config:
                 scheduler = eval(config["scheduler"])(
-                    optimizer, **config["scheduler_kwargs"]
+                    optimizer, **config.get("scheduler_kwargs", {})
                 )
             else:
                 scheduler = bm.MockLRScheduler()
@@ -337,29 +343,21 @@ class NERModel_pytorch(bm.Model):
         else:
             return model, tokenizer, collator
 
-    def sentencize_text(self, text: str) -> List[str]:
-        max_tokens = 10_000
+    def resolve_segmentizer(self, config: Dict[str, Any]) -> TextSegmentizer:
+        if "segmentizer" in config:
+            segmentizer_class = config["segmentizer"]
+            segmentizer_kwargs = config.get("segmentizer_kwargs", {})
+            if type(segmentizer_class) is str:
+                import democratizing_data_ml_algorithms
 
-        tokens = text.split()
-        if len(tokens) > max_tokens:
-            texts = [
-                " ".join(tokens[i : i + max_tokens])
-                for i in range(0, len(tokens), max_tokens)
-            ]
-            tokens = tokens[:max_tokens]
+                segmentizer = eval(segmentizer_class)(segmentizer_kwargs)
+            else:
+                segmentizer = segmentizer_class(segmentizer_kwargs)
         else:
-            texts = [text]
+            warnings.warn("No segmentizer provided, using spacy sentence segmentation")
+            segmentizer = DefaultSpacySegmentizer()
 
-        process_generator = self.nlp.pipe(
-            texts,
-            disable=["lemmatizer", "ner", "textcat"],
-        )
-
-        sents = []
-        for doc in process_generator:
-            sents.extend([sent.text for sent in doc.sents])
-
-        return sents
+        return segmentizer
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -368,13 +366,15 @@ class NERModel_pytorch(bm.Model):
             config, include_optimizer=False
         )
 
+        segmentizer = self.resolve_segmentizer(config)
+
         model.eval()
         model.to(device)
         ng = torch.no_grad()
         ng.__enter__()
 
         def infer_sample(text: str) -> str:
-            sents = self.sentencize_text(text)  # List[List[str]]
+            sents = segmentizer(text)  # List[List[str]]
             assert len(sents) > 0, "No sentences found in text"
 
             datasets = []
