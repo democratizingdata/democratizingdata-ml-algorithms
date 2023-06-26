@@ -28,11 +28,33 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from functools import partial
-from itertools import filterfalse
+"""Extract entities from text using an Named Entity Recognition (NER) model.
+
+This model uses an NER based model from the HuggingFace transformers library.
+
+It uses the following NER tags:
+ - "O": 0
+ - "B-DAT": 1
+ - "I-DAT": 2
+
+Example:
+
+    >>> import pandas as pd
+    >>> import democratizing_data_ml_algorithms.models.ner_model as ner
+    >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
+    >>> config = {
+    >>>     "model_tokenizer_name": "path/to/model_and_tokenizer",
+    >>>     "optimizer": "torch.optim.AdamW",
+    >>> }
+    >>> model = ner.NERModel_pytorch(config)
+    >>> df = rm.inference(config, df)
+"""
+
 import logging
 import os
 import warnings
+from functools import partial
+from itertools import filterfalse
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -48,19 +70,18 @@ try:
     import datasets as ds
     import torch
     import transformers as tfs
-    from transformers import AutoModelForTokenClassification, AutoTokenizer
     from datasets.utils.logging import disable_progress_bar
+    from transformers import AutoModelForTokenClassification, AutoTokenizer
 except ImportError:
     raise ImportError("Running NerModel requires extras 'ner_model' or 'all'")
 
 disable_progress_bar()
 
+import democratizing_data_ml_algorithms.models.base_model as bm
 from democratizing_data_ml_algorithms.data.repository import Repository
 from democratizing_data_ml_algorithms.models.spacy_default_segementizer import (
     DefaultSpacySegmentizer,
 )
-
-import democratizing_data_ml_algorithms.models.base_model as bm
 
 MODEL_OBJECTS = Tuple[
     tfs.modeling_utils.PreTrainedModel,
@@ -78,7 +99,6 @@ MODEL_OBJECTS_WITH_OPTIMIZER = Tuple[
 logger = logging.getLogger("ner_model")
 
 EXPECTED_KEYS = {
-    "epochs",
     "model_tokenizer_name",
     "tokenizer_kwargs",
     "model_kwargs",

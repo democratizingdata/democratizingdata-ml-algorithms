@@ -30,7 +30,7 @@
 
 """Extract entities from text using a regex.
 
-This model is a baseline that uses the a regext to extract entities from the
+This model is a baseline that uses the a regex to extract entities from the
 text. This model will extract entitites that are not datasets, but the goal
 is high recall. This model could be combined with an entity classifier to
 increast the precision of the model.
