@@ -100,10 +100,6 @@ logger = logging.getLogger("ner_model")
 
 EXPECTED_KEYS = {
     "model_tokenizer_name",
-    "tokenizer_kwargs",
-    "model_kwargs",
-    "optimizer",
-    "optimizer_kwargs",
 }
 
 
@@ -342,6 +338,7 @@ class NERModel_pytorch(bm.Model):
             num_labels=len(self.lbl_to_id),
             id2label=self.id_to_lbl,
             label2id=self.lbl_to_id,
+            **config.get("model_kwargs", {}),
         )
         if torch.cuda.is_available():
             model = model.cuda()

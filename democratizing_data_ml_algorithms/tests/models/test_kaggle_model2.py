@@ -28,54 +28,27 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-"""This model searches for a given set of keywords using a regular expression
+import democratizing_data_ml_algorithms.models.kaggle_model2 as km2
 
-Example:
+def test_train():
+    pass
 
-    >>> import pandas as pd
-    >>> import democratizing_data_ml_algorithms.models.kaggle_model3_regex_inference as kmr3
-    >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
-    >>> config = {
-    >>>     "pretrained_model": "path/to/model_and_tokenizer",
-    >>> }
-    >>> model = kmr3.Kaggle3RegexInference(config)
-    >>> df = rm.inference(config, df)
+def test_inference():
+    pass
 
-"""
-import logging
-from typing import Any, Dict, Optional
+def test_batcher():
+    collection = [1,2,3,4,5,6,7,8,9,10]
 
-import pandas as pd
+    batcher = km2.batcher(collection, 3)
 
-import democratizing_data_ml_algorithms.models.base_model as bm
-from democratizing_data_ml_algorithms.data.repository import Repository
-from democratizing_data_ml_algorithms.models.regex_model import RegexModel
+    expected = [[1,2,3],[4,5,6],[7,8,9],[10]]
+    actual = list(batcher)
 
-logger = logging.getLogger("RegexModel")
+    assert expected == actual
 
-EXPECTED_KEYS = ["model_path", "keywords"]
+def test_kagglemodel2_inference():
+    pass
 
-def train(
-    repository: Repository,
-    config: Dict[str, Any],
-    training_logger: Optional[bm.SupportsLogging] = None,
-) -> None:
-    raise NotImplementedError("RegexModel does not support training")
+def test_kagglemodel2_train():
+    pass
 
-def inference(
-    config: Dict[str, Any], df: pd.DataFrame
-) -> pd.DataFrame:
-
-    bm.validate_config(config, EXPECTED_KEYS)
-
-    model = Kaggle3RegexInference(config)
-
-    return model.inference(config, df)
-
-class Kaggle3RegexInference(RegexModel):
-    def __init__(self, config: Dict[str, Any]):
-        with open(config["model_path"], "r") as f:
-            config["keywords"] = [l.strip() for l in f.readlines()]
-
-        config["regex_pattern"] = ""
-        super().__init__(config)
