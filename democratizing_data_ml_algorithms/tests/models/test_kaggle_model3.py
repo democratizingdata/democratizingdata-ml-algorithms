@@ -28,6 +28,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import regex as re
+
 import democratizing_data_ml_algorithms.models.kaggle_model3 as km3
 
 
@@ -89,7 +91,9 @@ def test_kaggle_model3_tokenize():
         "Really",
         "Great",
         "Dataset",
+        "(",
         "RGD",
+        ")",
     ]
 
     actual = km3.KaggleModel3.tokenize(text=text)
@@ -97,41 +101,164 @@ def test_kaggle_model3_tokenize():
     assert actual == expected
 
 
-def test_kaggle_model3_get_word():
-    pass
-
 def test_kaggle_model3_tokenized_extract():
-    pass
+    texts = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+        " (though not that well).",
+    ]
+    keywords = ["Dataset"]
 
-def test_mapfilter():
-    pass
+    expected = [
+        "Really Great Dataset (RGD)",
+        "Really Bad Dataset (RBD)",
+    ]
+
+    actual = km3.KaggleModel3.tokenized_extract(texts=texts, keywords=keywords)
+
+    assert actual == expected
+
+
+def test_mapfilter_default():
+    inputs = ["Example", "input", "text"]
+
+    expected = ["Example", "input", "text"]
+
+    actual = list(km3.MapFilter()(input=inputs))
+
+    assert actual == expected
+
 
 def test_mapfilter_andthe():
-    pass
+    inputs = ["beginning and the end"]
+
+    expected = ["end"]
+
+    actual = list(km3.MapFilter_AndThe()(input=inputs))
+
+    assert actual == expected
+
 
 def test_mapfilter_stopwords():
-    pass
+    inputs = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+        " (though not that well).",
+    ]
+    stop_words = ["well"]
+
+    expected = [
+        "This model was trained on the Really Great Dataset (RGD)",
+    ]
+
+    actual = list(km3.MapFilter_StopWords(stopwords=stop_words)(input=inputs))
+
+    assert actual == expected
+
+
+def test_mapfilter_stopwords_upper():
+    inputs = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+        " (though not that well).",
+    ]
+    stop_words = ["Well"]
+
+    expected = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+        " (though not that well).",
+    ]
+
+    actual = list(km3.MapFilter_StopWords(stopwords=stop_words, do_lower=False)(input=inputs))
+
+    assert actual == expected
+
 
 def test_mapfilter_introssai():
     pass
 
+
 def test_mapfilter_introwords():
-    pass
+    inputs = [
+        "Example to the should be caught",
+        "Another the should be caught too",
+        "Should not be caught",
+    ]
+
+    expected = [
+        "should be caught",
+        "should be caught too",
+        "Should not be caught",
+    ]
+
+    actual = list(km3.MapFilter_IntroWords()(input=inputs))
+
+    assert actual == expected
+
 
 def test_mapfilter_brlessthantwowords():
-    pass
+    inputs = [
+        "Example to the should be caught",
+        "Another the should be caught too",
+        "Should not be caught",
+        "Filtered Out (FO)"
+    ]
+
+    br_pat = re.compile(
+        r"\s?\((.*)\)"
+    )
+    tokenize_pat = re.compile(r"[\w']+|[^\w ]")
+
+    expected = [
+        "Example to the should be caught",
+        "Another the should be caught too",
+        "Should not be caught",
+    ]
+
+    actual = list(km3.MapFilter_BRLessThanTwoWords(br_pat=br_pat, tokenize_pat=tokenize_pat)(inputs))
+
+    assert actual == expected
+
 
 def test_mapfilter_partialmatchdatasets():
-    pass
+    inputs = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+        " (though not that well).",
+    ]
+
+    datasets = [
+        "Really Great Dataset (RGD)"
+    ]
+
+    expected = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+    ]
+
+    br_pat = re.compile(
+        r"\s?\((.*)\)"
+    )
+
+    actual = list(
+        km3.MapFilter_PartialMatchDatasets(dataset=datasets, br_pat=br_pat)(inputs)
+    )
+
+    assert actual == expected
+
 
 def test_mapfilter_traincounts():
     pass
 
+
 def test_mapfilter_brpatsub():
     pass
 
+
 def test_sentencizer():
     pass
+
 
 def test_dotsplitsentencizer():
     pass
