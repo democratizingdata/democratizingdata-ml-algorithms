@@ -3,7 +3,7 @@ from itertools import starmap
 from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import pandas as pd
-from src.data.repository import Repository, SnippetRepositoryMode
+from democratizing_data_ml_algorithms.data.repository import Repository, SnippetRepositoryMode
 
 
 
