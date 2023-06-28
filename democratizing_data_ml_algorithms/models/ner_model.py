@@ -445,13 +445,17 @@ class NERModel_pytorch(bm.Model):
                 list(map(lambda x: " ".join(map(lambda y: y[0], x)), datasets))
             )
 
+            confidences = "|".join(
+                list(map(lambda x: " ".join(map(lambda y: y[1], x)), datasets))
+            )
+
             snippets = "|".join(contexts)
 
-            return matches, snippets
+            return matches, snippets, confidences
 
 
 
-        df[["model_prediction", "prediction_snippet"]] = df.apply(
+        df[["model_prediction", "prediction_snippet", "prediction_confidence"]] = df.apply(
             lambda x: infer_sample(x["text"]),
             result_type="expand",
             axis=1,
