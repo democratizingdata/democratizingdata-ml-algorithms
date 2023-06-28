@@ -1,5 +1,9 @@
+# DONT TEST OR USE THIS
 # The Schwartz-Hearst algorithm for extracting identifying acronyms from text
 # implementation from the submission of model 2
+#
+#
+# not recommended for use
 
 import logging
 from collections import Counter, defaultdict

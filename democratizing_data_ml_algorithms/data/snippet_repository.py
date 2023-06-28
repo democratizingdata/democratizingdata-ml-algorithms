@@ -21,8 +21,8 @@ from spacy import displacy
 from spacy.tokens import Doc
 from tqdm import tqdm
 
-from src.data.repository import Repository, SnippetRepositoryMode
-from src.models.regex_model import RegexModel
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.models.regex_model import RegexModel
 
 import warnings
 

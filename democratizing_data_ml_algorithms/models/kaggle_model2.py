@@ -1,3 +1,35 @@
+# BSD 3-Clause License
+
+# Copyright (c) 2023, AUTHORS
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"""This model is an adaptation of the second-place model from the Kaggle competition.
+
 # Model inference notebook:
 # https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/original_submissions/2nd%20Chun%20Ming%20Lee/2nd-place-coleridge-inference-code.ipynb
 # Model training script:
@@ -5,52 +37,48 @@
 # Original labels location:
 # https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/original_submissions/2nd%20Chun%20Ming%20Lee/roberta-annotate-abbr.csv
 
-# This model is a baseline model that uses the original labels from the Kaggle
-# competition. It uses pytorch and the transformers library.
-import json
+At a high-level the model extracts entities from the text using an entity
+extraction algorithm and then classifies them uses a classifier.
+
+Example:
+
+    >>> import pandas as pd
+    >>> import democratizing_data_ml_algorithms.models.kaggle_model2 as km2
+    >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
+    >>> config = {
+    >>>     "pretrained_model": "path/to/model_and_tokenizer",
+    >>> }
+    >>> model = km2.KaggleModel2(config)
+    >>> df = rm.inference(config, df)
+
+"""
 import logging
 import os
 from itertools import islice
 from random import shuffle
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 
 import numpy as np
 import pandas as pd
-import torch
-import mlflow
-
-# from apex import amp
-# from apex.optimizers import FusedAdam
 from tqdm import trange
-from scipy.special import expit, softmax
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
 
-from src.data.repository import Repository
-import src.models.base_model as bm
-import src.evaluate.model as em
-import src.models.schwartz_hearst_model as shm
+try:
+    import torch
+    from scipy.special import softmax
+    from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer  # type: ignore # TODO: figure out if we want to stub ALL of transformers...
+except ImportError:
+    raise ImportError("Running KaggleModel2 requires extras 'kaggle_model2' or 'all'")
+
+
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
+import democratizing_data_ml_algorithms.evaluate.model as em
 
 logger = logging.getLogger("KaggleModel2")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-
-    expected_keys = [
-        "accum_for",
-        "max_cores",
-        "max_seq_len",
-        "use_amp",
-        "pretrained_model",
-        "learning_rate",
-        "num_epochs",
-        "optimizer",
-        "model_path",
-        "batch_size",
-        "save_model",
-    ]
-
-    for key in expected_keys:
-        assert key in config, f"Missing key {key} in config"
+EXPECTED_KEYS = {
+    "pretrained_model",
+}
 
 
 def train(
@@ -69,36 +97,19 @@ def train(
     Returns:
         None
     """
-    validate_config(config)
-    training_logger.log_parameters(config)
+    bm.validate_config(EXPECTED_KEYS, config)
+    training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
     model = KaggleModel2()
     model.train(repository, config, training_logger)
 
 
-def validate(repository: Repository, config: Dict[str, Any]) -> None:
-    """Validates the model and saves the results to config['model_path']
 
-    Args:
-        repository (Repository): Repository object
-        config (Dict[str, Any]): Configuration dictionary
-
-    Returns:
-        None
-    """
-    validate_config(config)
-
-    model = KaggleModel2()
-    model_evaluation = em.evaluate_model(repository, model, config)
-
-    print(model_evaluation)
-
-    logger.info(f"Saving evaluation to {config['eval_path']}")
-    with open(config["eval_path"], "w") as f:
-        json.dump(model_evaluation.to_json(), f)
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    pass
 
 
 # https://stackoverflow.com/a/62913856/2691018
-def batcher(iterable, batch_size):
+def batcher(iterable:Iterable, batch_size:int):
     iterator = iter(iterable)
     while batch := list(islice(iterator, batch_size)):
         yield batch
@@ -117,15 +128,6 @@ class KaggleModel2(bm.Model):
         pretrained_config = AutoConfig.from_pretrained(
             config["pretrained_model"], num_labels=2
         )
-
-        # if torch.cuda.is_available():
-        #     model = AutoModelForSequenceClassification.from_pretrained(
-        #         config["pretrained_model"], config=pretrained_config
-        #     ).cuda()
-        # else:
-        #     model = AutoModelForSequenceClassification.from_pretrained(
-        #         config["pretrained_model"], config=pretrained_config
-        #     )
 
         model = AutoModelForSequenceClassification.from_pretrained(
             config["pretrained_model"], config=pretrained_config
@@ -186,7 +188,12 @@ class KaggleModel2(bm.Model):
 
         tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
 
-        opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
+
+        if "learning_rate" in config:
+            opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
+        else:
+            opt = eval(config["optimizer"])(model.parameters())
+
         scheduler = torch.optim.lr_scheduler.MultiplicativeLR(
             opt, lr_lambda=lambda e: 0.95
         )
@@ -209,7 +216,6 @@ class KaggleModel2(bm.Model):
                 test_samples,
             )
 
-            # self._test_epoch(config, model, tokenizer, test_samples, training_logger, epoch)
             scheduler.step()
             if config["save_model"]:
                 save_path = os.path.join(
@@ -237,7 +243,7 @@ class KaggleModel2(bm.Model):
         train_labels = all_labels[train_indices]
 
         iter = 0
-        accum_for = config["accum_for"]
+        accum_for = config.get("accum_for", 1)
         running_total_loss = 0  # Display running average of loss across epoch
         with trange(
             0,
@@ -276,10 +282,6 @@ class KaggleModel2(bm.Model):
                 loss = model_outputs["loss"]
                 loss = loss / config["accum_for"]  # Normalize if we're doing GA
 
-                # if config["use_amp"]:
-                #     with amp.scale_loss(loss, opt) as scaled_loss:
-                #         scaled_loss.backward()
-                # else:
                 loss.backward()
 
                 if torch.cuda.is_available():
@@ -513,7 +515,11 @@ class KaggleModel2(bm.Model):
             )
 
 
-if __name__ == "__main__":
+def entry_point():
     bm.train = train
-    bm.validate = validate
+    bm.inference = inference
     bm.main()
+
+
+if __name__ == "__main__":
+    entry_point()

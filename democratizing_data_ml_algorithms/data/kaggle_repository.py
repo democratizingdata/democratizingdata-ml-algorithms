@@ -8,7 +8,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from src.data.repository import Repository
+from democratizing_data_ml_algorithms.data.repository import Repository
 
 logger = logging.getLogger("kaggle_repository")
 

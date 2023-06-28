@@ -7,49 +7,40 @@
 
 
 from functools import partial
-from itertools import filterfalse, islice, starmap
+from itertools import filterfalse, starmap
 import logging
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import datasets as ds
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
-import torch
-import transformers as tfs
-from pytorch_metric_learning import losses as metric_losses
 import spacy
 from tqdm import tqdm
 
-from datasets.utils.logging import disable_progress_bar
-disable_progress_bar()
+# check if the generic_model1 extras are installed
+try:
+    import datasets as ds
+    import torch
+    import transformers as tfs
+    from pytorch_metric_learning import losses as metric_losses
+except ImportError:
+    raise ImportError("Running GenericModel1 requires extras 'generic_model1' or 'all'")
 
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
 
-from src.data.repository import Repository
-import src.models.base_model as bm
-
+ds.utils.logging.disable_progress_bar()
 logger = logging.getLogger("token_classification_model")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-
-    expected_keys = {
-        "model_tokenizer_name",
-        "tokenizer_kwargs",
-        "model_kwargs",
-        "optimizer",
-        "optimizer_kwargs",
-    }
-
-    missing_keys = expected_keys - set(config.keys())
-    assert not missing_keys, f"Missing keys: {missing_keys}"
-
-    if "save_model" in config:
-        assert (
-            "model_path" in config
-        ), "if save_model is true, you need to provide a path"
+EXPECTED_KEYS = {
+    "model_tokenizer_name",
+    "tokenizer_kwargs",
+    "model_kwargs",
+    "optimizer",
+    "optimizer_kwargs",
+}
 
 
 def train(
@@ -57,7 +48,18 @@ def train(
     config: Dict[str, Any],
     training_logger: Optional[bm.SupportsLogging] = None,
 ) -> None:
-    validate_config(config)
+    """Trains the model.
+
+    Args:
+        repository (Repository): Repository to use for training
+        config (Dict[str, Any]): Config for the model
+        training_logger (Optional[bm.SupportsLogging], optional): Logger to use for logging metrics, parameters, and figures. Defaults to None.
+
+    Raises:
+        AssertionError: if the config is fails validation in bm.validate_config()
+    """
+
+    bm.validate_config(EXPECTED_KEYS, config)
 
     training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
 
@@ -66,16 +68,37 @@ def train(
 
 
 def validate(repository: Repository, config: Dict[str, Any]) -> None:
-    validate_config(config)
+    """Validates the model.
 
+    Args:
+        repository (Repository): Repository to use for validation
+        config (Dict[str, Any]): Config for the model
 
-def convert_to_T(T: type, vals: List[str]) -> List[float]:
-    return [T(x) for x in vals]
+    Raises:
+        AssertionError: if the config is fails validation in validate_config()
+
+    Returns:
+        None
+    """
+
+    bm.validate_config(EXPECTED_KEYS, config)
+
+    raise NotImplementedError()
 
 
 def tokenize_and_align_labels(
     tokenizer_f: Callable[[Dict[str, Any]], Dict[str, Any]], examples: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """Tokenizes the examples and aligns the labels.
+
+    Args:
+        tokenizer_f (Callable[[Dict[str, Any]], Dict[str, Any]]): Tokenizer function to use
+        examples (Dict[str, Any]): Examples to tokenize and align
+
+    Returns:
+        Dict[str, Any]: Tokenized and aligned examples
+    """
+
     tokenized_inputs = tokenizer_f(examples["text"])
 
     labels = []
@@ -83,15 +106,8 @@ def tokenize_and_align_labels(
         word_ids = tokenized_inputs.word_ids(batch_index=i)
         label_ids = [-100] * len(word_ids)  # assume all tokens are special
         top_word_id = max(map(lambda x: x if x else -1, word_ids))
-        try:
-            for word_idx in range(top_word_id + 1):
-                label_ids[word_ids.index(word_idx)] = label[word_idx]
-        except ValueError as e:
-            print(str(e))
-            print("word_ids", word_ids)
-            print("label_ids", label_ids)
-            print("tokenized_inputs", examples["text"][i])
-            raise e
+        for word_idx in range(top_word_id + 1):
+            label_ids[word_ids.index(word_idx)] = label[word_idx]
         labels.append(label_ids)
 
     tokenized_inputs["mask_token_indicator"] = labels
@@ -101,12 +117,30 @@ def tokenize_and_align_labels(
 def apply_mask_sample(
     tokens: List[str], mask_token_indicator: List[float]
 ) -> List[str]:
+    """Applies the mask to the tokens.
+
+    Args:
+        tokens (List[str]): Tokens to apply the mask to
+        mask_token_indicator (List[float]): Mask to apply to the tokens
+
+    Returns:
+        List[str]: Tokens with the mask applied
+    """
 
     tokens = list(map(lambda t, m: "[MASK]" if m else t, tokens, mask_token_indicator))
     return tokens
 
 
 def apply_mask_batched(dataset: Dict[str, Any]) -> Dict[str, Any]:
+    """Applies the mask to the dataset.
+
+    Args:
+        dataset (Dict[str, Any]): Dataset to apply the mask to
+
+    Returns:
+        Dict[str, Any]: Dataset with the mask applied
+    """
+
     # inintially every token is masked, however, we want to group them
     # so that a single token represents an entire dataset
     ungrouped_masks = list(
@@ -135,6 +169,15 @@ def apply_mask_batched(dataset: Dict[str, Any]) -> Dict[str, Any]:
 def group_mask_sample(
     tokens: List[str], mask_token_indicator: List[float]
 ) -> List[str]:
+    """Groups the mask for a sample.
+
+    Args:
+        tokens (List[str]): Tokens to group the mask for
+        mask_token_indicator (List[float]): Mask to group
+
+    Returns:
+        List[str]: Tokens with the mask grouped
+    """
 
     # group the masks
     grouped_text_masks = [tokens[0]]
@@ -153,8 +196,18 @@ def group_mask_sample(
 def convert_dataset(
     tokenizer_f: Callable, collator: Callable, dataset: ds.Dataset
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
+    """Converts the dataset to a format that can be used by the model.
 
-    convert_f = partial(convert_to_T, int)
+    Args:
+        tokenizer_f (Callable): Tokenizer function to use
+        collator (Callable): Collator to use
+        dataset (ds.Dataset): Dataset to convert
+
+    Returns:
+        Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: Converted dataset inputs and labels
+    """
+
+    convert_f = partial(bm.convert_to_T, int)
 
     dataset = (
         dataset.map(
@@ -211,13 +264,25 @@ def prepare_batch(
     Dict[str, torch.Tensor],
     Dict[str, torch.Tensor],
 ]:
+    """Prepares a batch for training.
+
+    Args:
+        tokenizer (tfs.tokenization_utils_base.PreTrainedTokenizerBase): Tokenizer to use
+        data_collator (tfs.data.data_collator.DataCollatorMixin): Data collator to use
+        n_query (int): Number of query samples to use
+        tokenizer_call_kwargs (Dict[str, Any]): Keyword arguments to pass to the tokenizer
+        batch (pd.DataFrame): Batch to prepare
+
+    Returns:
+        Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]: Prepared batch
+    """
 
     # we need to split the batch into support and query sets, well use the
     # train/test split functionality from datasets.Dataset to select random
     # subsets of the batch as the query/support sets. where query will be "train"
     if n_query > 1:
         dataset = ds.Dataset.from_pandas(
-            batch.drop(columns=["tags"])
+            batch.drop(columns=["pos_tags"])
         ).class_encode_column("label")
 
         # it can be the case thatll of the samples come from one class. That will
@@ -238,7 +303,7 @@ def prepare_batch(
             dataset = dataset.train_test_split(train_size=n_query)
     else:
         dataset = ds.Dataset.from_pandas(
-            batch.drop(columns=["tags"])
+            batch.drop(columns=["pos_tags"])
         ).train_test_split(train_size=n_query)
 
     ds_query = dataset["train"]
@@ -265,6 +330,16 @@ def filter_prep_tokens(
     y_pred: np.ndarray,
 ) -> Tuple[List[str], List[float], List[float]]:
     # we need to filter out special tokens [CLS] and [SEP]
+    """Filters out special tokens from the tokens, y_true, and y_pred arrays.
+
+    Args:
+        tokens (np.ndarray): Array of tokens
+        y_true (np.ndarray): Array of true labels
+        y_pred (np.ndarray): Array of predicted labels
+
+    Returns:
+        Tuple[List[str], List[float], List[float]]: Filtered tokens, y_true, and y_pred
+    """
 
     idxs = list(
         filter(
@@ -278,6 +353,7 @@ def filter_prep_tokens(
 # based on
 # https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
 def color_text_figure_binary(tokens, cmap, y_true, y_pred, threshold=0.5):
+
     f, ax = plt.subplots(figsize=(10, 1))
     r = f.canvas.get_renderer()
     ax.set_axis_off()
@@ -323,7 +399,18 @@ def masked_mean(
     keepdim: bool = True,
     be_safe: bool = True,
 ) -> torch.Tensor:
-    """"""
+    """Computes the mean of the array along the given axis, ignoring masked values.
+
+    Args:
+        arr (torch.Tensor): Array to compute the mean of
+        keep_mask (torch.Tensor): Mask of values to keep
+        axis (int): Axis to compute the mean along
+        keepdim (bool): Whether to keep the dimension of the mean
+        be_safe (bool): Whether to be safe and replace 0s in the denominator with 1s
+
+    Returns:
+        torch.Tensor: Mean of the array along the given axis, ignoring masked values
+    """
     masked_arr = arr * keep_mask
     n = keep_mask.sum(axis=axis, keepdim=keepdim)
 
@@ -334,7 +421,9 @@ def masked_mean(
 
 
 def merge_tokens_w_classifications(
-    tokens: List[str], token_should_be_merged: List[bool], classifications: List[float]
+    tokens: List[str],
+    token_should_be_merged: List[bool],
+    classifications: List[float],
 ) -> List[Tuple[str, float]]:
     merged = []
     for token, do_merge, classification in zip(
@@ -347,12 +436,18 @@ def merge_tokens_w_classifications(
     return merged
 
 
-def is_special_token(token):
-    return (
-        token.startswith("[")
-        and token.endswith("]")
-        or token.startswith("<")
-        and token.endswith(">")
+def is_special_token(token: str) -> bool:
+    """Checks if a token is a special token.
+
+    Args:
+        token (str): Token to check
+
+    Returns:
+        bool: Whether the token is a special token
+    """
+
+    return (token.startswith("[") and token.endswith("]")) or (
+        token.startswith("<") and token.endswith(">")
     )
 
 
@@ -360,6 +455,15 @@ def high_probablity_token_groups(
     tokens_classifications: List[Tuple[str, float]],
     threshold: float = 0.9,
 ) -> List[List[Tuple[str, float]]]:
+    """Groups tokens with high probability classifications together.
+
+    Args:
+        tokens_classifications (List[Tuple[str, float]]): List of tokens and their classifications
+        threshold (float, optional): Threshold to use for high probability. Defaults to 0.9.
+
+    Returns:
+        List[List[Tuple[str, float]]]: List of groups of tokens with high probability classifications
+    """
 
     datasets = []
     dataset = []
@@ -388,7 +492,6 @@ class GenericModel1(bm.Model):
     def get_model_objects(
         self, config: Dict[str, Any], include_optimizer: bool
     ) -> None:
-        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         tokenizer = tfs.AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"], **config.get("tokenizer_kwargs", {})
@@ -404,7 +507,7 @@ class GenericModel1(bm.Model):
             config["model_tokenizer_name"], **config.get("model_kwargs", {})
         )
 
-        print("Model linear layer size:", model.config.hidden_size)
+        logger.info("Model linear layer size:", model.config.hidden_size)
         linear = torch.nn.Linear(
             model.config.hidden_size,
             model.config.hidden_size,
@@ -417,20 +520,14 @@ class GenericModel1(bm.Model):
         # then it is a model that is being pulled from huggingface and we'll
         # keep the random weights
         if os.path.exists(config["model_tokenizer_name"]):
-            print(
+            logger.info(
                 "Loading pretrained linear layer from:",
-                os.path.join(config["model_tokenizer_name"], "linear.pt"),
+                os.path.join(config["model_tokenizer_name"], "linear.bin"),
             )
             linear.load_state_dict(
-                torch.load(
-                    os.path.join(config["model_tokenizer_name"], "linear.pt"),
-                    map_location=torch.device("cpu"),
-                ),
+                torch.load(os.path.join(config["model_tokenizer_name"], "linear.bin")),
                 strict=True,
             )
-
-        # model.to(device)
-        # linear.to(device)
 
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
@@ -504,8 +601,6 @@ class GenericModel1(bm.Model):
 
         support_tokens = np.load(path)  # [n, embed_dim]
 
-        # print("getting", n_samples, "from", path, support_tokens.shape)
-
         sample_idxs = np.random.choice(np.arange(support_tokens.shape[0]), n_samples)
 
         support_tokens = np.mean(
@@ -561,16 +656,6 @@ class GenericModel1(bm.Model):
 
             datasets = []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
-                # masked_embedding = torch.from_numpy(self.get_support_mask_embed(
-                #     config["support_mask_embedding_path"],
-                #     config["n_support_samples"],
-                # )).to(device) # [1,     1,     embed_dim]
-
-                # no_mask_embedding = torch.from_numpy(self.get_support_mask_embed(
-                #     config["support_no_mask_embedding_path"],
-                #     config["n_support_samples"],
-                # )).to(device) # [1,     1,     embed_dim]
-
                 batch = tokenizer(
                     [b.split() for b in _batch],
                     return_tensors="pt",
@@ -598,12 +683,6 @@ class GenericModel1(bm.Model):
                     scale_cos_sim
                 )  # [batch, token]
 
-                # token_non_classification = 1 - torch.nn.functional.sigmoid(
-                #     torch.nn.functional.cosine_similarity(
-                #         output_embedding, no_mask_embedding, dim=-1
-                #     ) *  10
-                # ) # [batch, token]
-
                 # Not sure why they do this  ===================================
                 # This isn't documented in the paper, but it's in the code
                 token_classification = (
@@ -614,11 +693,6 @@ class GenericModel1(bm.Model):
                 )  # [batch, token]
                 merged_classifications = 0.5 * (
                     token_classification + token_non_classification
-                )
-                # merged_classifications = token_classification
-
-                merged_classifications = (
-                    merged_classifications  # * batch.attention_mask.cpu().numpy()
                 )
                 # Not sure why they do this  ===================================
 
@@ -663,123 +737,6 @@ class GenericModel1(bm.Model):
         ng.__exit__(None, None, None)
 
         return df
-
-
-    def generate_support_mask_embeddings(
-        self,
-        repository: Repository,
-        config: Dict[str, Any],
-    ) -> None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        ng = torch.no_grad()
-        ng.__enter__()
-        model, linear, tokenizer, collator = self.get_model_objects(
-            config, include_optimizer=False
-        )
-
-        model.to(device)
-        linear.to(device)
-        model.eval()
-        linear.eval()
-
-        training_iter = repository.get_training_data(
-            batch_size=config["batch_size"],
-            balance_labels=config.get("balance_labels", True),
-        )
-
-        mask_embeddings = []
-        no_mask_embeddings = []
-
-        mask_bar = tqdm(position=1, desc="mask_ebmeddings", total=config["n_support_samples"])
-        no_mask_bar = tqdm(position=2, desc="no_mask_ebmeddings", total=config["n_support_samples"])
-
-
-        for batch in tqdm(training_iter, desc=f"building support embeddings", position=0):
-            (
-                batch_query,
-                batch_support,
-                query_labels,
-                support_labels,
-            ) = prepare_batch(
-                tokenizer,
-                collator,
-                config.get("n_query", 1),
-                config.get("tokenizer_call_kwargs", {}),
-                batch,
-            )
-
-            send_to_device = lambda d: {k: v.to(device) for k, v in d.items()}
-            batch_query = send_to_device(batch_query)
-            batch_support = send_to_device(batch_support)
-            query_labels = send_to_device(query_labels)
-            support_labels = send_to_device(support_labels)
-
-            # These are the snippet level labels
-            query_seq_labels = query_labels["seq_labels"]  # [bq, 1]
-            support_seq_labels = support_labels["seq_labels"]  # [bs, 1]
-
-            # These indicate which of the support tokens are mask tokens
-            support_mask_token_indicator = support_labels[
-                "mask_token_indicator"
-            ]  # [bs, seq_len]
-            # These indicate which of the query tokens are label tokens
-            query_label_token_indicator = query_labels[
-                "mask_token_indicator"
-            ]  # [bq, seq_len]
-
-            # First process the support set ================================
-            output_support = model(**batch_support)
-            support_hidden_states = (
-                output_support.last_hidden_state
-            )  # [bs, seq_len, emb_dim]
-            # might be support_hidden_states = output_support.hidden_states[-1]
-            support_linear_embedding = linear(
-                support_hidden_states
-            )  # [bs, seq_len, emb_dim]
-
-            # # the first token is the CLS token which is the support embedding
-            # support_embedding = support_hidden_states[:, 0, :]  # [bs, emb_dim]
-
-            mask_embedding = masked_mean(
-                support_linear_embedding,
-                support_mask_token_indicator.unsqueeze(-1),
-                axis=1,  # average over sequence length
-                keepdim=False,
-            )
-
-            non_mask_embedding = masked_mean(
-                support_linear_embedding,
-                (1 - support_mask_token_indicator).unsqueeze(-1),
-                axis=1,  # average over sequence length
-                keepdim=False,
-            )
-
-            mask_e = mask_embedding.detach().cpu().numpy()
-            no_mask_e = non_mask_embedding.detach().cpu().numpy()
-
-            n_mask = sum(map(lambda x: len(x), mask_embeddings))
-            n_no_mask = sum(map(lambda x: len(x), no_mask_embeddings))
-
-            if n_mask < config["n_support_samples"]:
-                mask_embeddings.append(mask_e)
-                mask_bar.update(len(mask_e))
-
-            if n_no_mask < config["n_support_samples"]:
-                no_mask_embeddings.append(no_mask_e)
-                no_mask_bar.update(len(no_mask_e))
-
-            if n_mask >= config["n_support_samples"] and n_no_mask >= config["n_support_samples"]:
-                break
-
-
-        mask_embeddings = np.concatenate(mask_embeddings, axis=0)
-        no_mask_embeddings = np.concatenate(no_mask_embeddings, axis=0)
-
-        # save the embeddings
-        np.save(config["support_mask_embedding_path"], mask_embeddings)
-        np.save(config["support_no_mask_embedding_path"], no_mask_embeddings)
-        ng.__exit__(None, None, None)
 
     def train(
         self,
@@ -1541,8 +1498,6 @@ class GenericModel1(bm.Model):
                             break
 
                     ng.__exit__(None, None, None)
-
-                    plt.close("all")
 
                 # the balanced version of the dataset is quite large so offer
                 # the option to get out of the epoch early

@@ -1,78 +1,121 @@
-# Model notebook
-# https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/original_submissions/3rd%20Mikhail%20Arkhipov/3rd%20place%20coleridge.ipynb
-# ==============================================================================
-# Description of the model from the notebook: Brief Solution Description
-#
-# The solution is based on a simple heuristic: a capitalized sequence of words
-# that includes a keyword and followed by parenthesis usually refer to a
-# dataset. So, any sequence like
-#
-# ``` Xxx Xxx Keyword Xxx (XXX)```
-#
-# is a good candidate to be a dataset.
-#
-# All mentions of a given form are extracted to form a list of dataset names to
-# look for. Each text in the test is checked for inclusion of the dataset name
-# from the list. Every match is added to the prediction. Substring predictions
-# are removed.
-#
-# Keywords list:
-# - Study
-# - Survey
-# - Assessment
-# - Initiative
-# - Data
-# - Dataset
-# - Database
-#
-# Also, many data mentions refer to some organizations or systems. These
-# mentions seem to be non-valid dataset names. To remove them the following list
-# of stopwords is used:
-# - lab
-# - centre
-# - center
-# - consortium
-# - office
-# - agency
-# - administration
-# - clearinghouse
-# - corps
-# - organization
-# - organisation
-# - association
-# - university
-# - department
-# - institute
-# - foundation
-# - service
-# - bureau
-# - company
-# - test
-# - tool
-# - board
-# - scale
-# - framework
-# - committee
-# - system
-# - group
-# - rating
-# - manual
-# - division
-# - supplement
-# - variables
-# - documentation
-# - format
-#
-# To exclude mentions not related to data a simple count statistic is used:
-#
-#       N_{data}(str)
-# F_d = -------------
-#       N_{total}(str)
-#
-# where N_{data}(str) is the number of times the str occures with data
-# word (parenthesis are dropped) and N_{total}(str) is the total number
-# of times str present in texts. All mentions with  F_d<0.1  are dropped.
-import json
+# BSD 3-Clause License
+
+# Copyright (c) 2023, AUTHORS
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"""This model uses a simple string matching to identify keywords in the text.
+Model notebook
+https://github.com/Coleridge-Initiative/rc-kaggle-models/blob/original_submissions/3rd%20Mikhail%20Arkhipov/3rd%20place%20coleridge.ipynb
+==============================================================================
+Description of the model from the notebook: Brief Solution Description
+
+The solution is based on a simple heuristic: a capitalized sequence of words
+that includes a keyword and followed by parenthesis usually refer to a
+dataset. So, any sequence like
+
+``` Xxx Xxx Keyword Xxx (XXX)```
+
+is a good candidate to be a dataset.
+
+All mentions of a given form are extracted to form a list of dataset names to
+look for. Each text in the test is checked for inclusion of the dataset name
+from the list. Every match is added to the prediction. Substring predictions
+are removed.
+
+Keywords list:
+- Study
+- Survey
+- Assessment
+- Initiative
+- Data
+- Dataset
+- Database
+
+Also, many data mentions refer to some organizations or systems. These
+mentions seem to be non-valid dataset names. To remove them the following list
+of stopwords is used:
+- lab
+- centre
+- center
+- consortium
+- office
+- agency
+- administration
+- clearinghouse
+- corps
+- organization
+- organisation
+- association
+- university
+- department
+- institute
+- foundation
+- service
+- bureau
+- company
+- test
+- tool
+- board
+- scale
+- framework
+- committee
+- system
+- group
+- rating
+- manual
+- division
+- supplement
+- variables
+- documentation
+- format
+
+To exclude mentions not related to data a simple count statistic is used:
+
+      N_{data}(str)
+F_d = -------------
+      N_{total}(str)
+
+where N_{data}(str) is the number of times the str occures with data
+word (parenthesis are dropped) and N_{total}(str) is the total number
+of times str present in texts. All mentions with  F_d<0.1  are dropped.
+
+
+Example:
+
+    >>> import pandas as pd
+    >>> import democratizing_data_ml_algorithms.models.kaggle_model3 as km3
+    >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
+    >>> config = {
+    >>>     "pretrained_model": "path/to/model_and_tokenizer",
+    >>> }
+    >>> model = kmr3.KaggleModel3(config)
+    >>> df = rm.inference(config, df)
+"""
 import logging
 import os
 import re
@@ -93,26 +136,13 @@ from typing import (
 import pandas as pd
 from tqdm import tqdm
 
-from src.data.repository import Repository
-import src.models.base_model as bm
-import src.evaluate.model as em
+from democratizing_data_ml_algorithms.data.repository import Repository
+import democratizing_data_ml_algorithms.models.base_model as bm
+import democratizing_data_ml_algorithms.evaluate.model as em
 
 logger = logging.getLogger("kaggle_model3")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-
-    expected_keys = [
-        "keywords",
-        "min_train_count",
-        "rel_freq_threshold",
-        "model_path",
-        "eval_path",
-    ]
-
-    for key in expected_keys:
-        assert key in config, f"Missing key {key} in config"
-
+EXPECTED_KEYS = ["keywords"]
 
 def train(
     repository: Repository,
@@ -129,32 +159,17 @@ def train(
     Returns:
         None
     """
-    validate_config(config)
+    bm.validate_config(EXPECTED_KEYS, config)
 
     model = KaggleModel3()
     model.train(repository, config)
 
 
-def validate(repository: Repository, config: Dict[str, Any]) -> None:
-    """Validates the model and saves the results to config.model_path
-
-    Args:
-        repository (Repository): Repository object
-        config (Dict[str, Any]): Configuration dictionary
-
-    Returns:
-        None
-    """
-    validate_config(config)
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    bm.validate_config(EXPECTED_KEYS, config)
 
     model = KaggleModel3()
-    model_evaluation = em.evaluate_model(repository, model, config)
-
-    print(model_evaluation)
-
-    logger.info(f"Saving evaluation to {config['eval_path']}")
-    with open(config["eval_path"], "w") as f:
-        json.dump(model_evaluation.to_json(), f)
+    return model.inference(config, df)
 
 
 class KaggleModel3(bm.Model):
@@ -274,10 +289,10 @@ class KaggleModel3(bm.Model):
 
         texts = list(chain(*train_texts))
 
-        ssai_par_datasets = KaggleModel3._tokenized_extract(
+        ssai_par_datasets = KaggleModel3.tokenized_extract(
             texts, KaggleModel3.KEYWORDS
         )
-        words = list(chain(*[KaggleModel3._tokenize(ds) for ds in ssai_par_datasets]))
+        words = list(chain(*[KaggleModel3.tokenize(ds) for ds in ssai_par_datasets]))
 
         mapfilters = [
             MapFilter_AndThe(),
@@ -297,7 +312,7 @@ class KaggleModel3(bm.Model):
             MapFilter_TrainCounts(
                 texts,
                 ssai_par_datasets,
-                KaggleModel3._get_index(texts, set(words)),
+                KaggleModel3.get_index(texts, set(words)),
                 config["keywords"],
                 config["min_train_count"],
                 config["rel_freq_threshold"],
@@ -393,7 +408,7 @@ class KaggleModel3(bm.Model):
         return fabbrs
 
     @staticmethod
-    def _get_index(texts: List[str], words: Set[str]) -> Dict[str, Set[int]]:
+    def get_index(texts: List[str], words: Set[str]) -> Dict[str, Set[int]]:
         # Returns a dictionary where words are keys and values are indices
         # of documents (sentences) in texts, in which the word present
         index = defaultdict(set)
@@ -403,22 +418,18 @@ class KaggleModel3(bm.Model):
             if w.lower() not in KaggleModel3.PREPS and re.sub("'", "", w).isalnum()
         }
         for n, text in tqdm(enumerate(texts), total=len(texts), desc="Indexing"):
-            tokens = KaggleModel3._tokenize(text)
+            tokens = KaggleModel3.tokenize(text)
             for tok in tokens:
                 if tok in words:
                     index[tok].add(n)
         return index
 
     @staticmethod
-    def _tokenize(text: str) -> List[str]:
+    def tokenize(text: str) -> List[str]:
         return KaggleModel3.TOKENIZE_PAT.findall(text)
 
     @staticmethod
-    def _clean_text(text: str) -> str:
-        return re.sub("[^A-Za-z0-9]+", " ", str(text).lower()).strip()
-
-    @staticmethod
-    def _tokenized_extract(texts: List[str], keywords: List[str]) -> Iterable[str]:
+    def tokenized_extract(texts: List[str], keywords: List[str]) -> Iterable[str]:
         # Exracts all mentions of the form
         # Xxx Xxx Keyword Xxx (XXX)
         connection_words = {"of", "the", "with", "for", "in", "to", "on", "and", "up"}
@@ -739,7 +750,7 @@ class MapFilter_TrainCounts(MapFilter):
 
         for n, text in enumerate(texts):
             # this tokenizes entire documents
-            tokens = KaggleModel3._tokenize(text)
+            tokens = KaggleModel3.tokenize(text)
             for tok in tokens:
                 if tok in words:
                     index[tok].add(n)
@@ -788,7 +799,7 @@ class DotSplitSentencizer(Sentencizer):
 
 if __name__ == "__main__":
     bm.train = train
-    bm.validate = validate
+    bm.inference = inference
     bm.main()
 
 
@@ -802,7 +813,7 @@ if __name__ == "__main__":
 #     dataset = "Really Great Dataset"
 #     KaggleModel3.get_parenthesis(text=input, dataset=dataset)
 #     assert KaggleModel3.get_parenthesis(text=input, dataset=dataset) == ["RGD"]
-#     assert KaggleModel3._tokenized_extract([input], KaggleModel3.KEYWORDS) == [
+#     assert KaggleModel3.tokenized_extract([input], KaggleModel3.KEYWORDS) == [
 #         "Really Great Dataset (RGD)",
 #         "Really Bad Dataset (RBD)",
 #     ]

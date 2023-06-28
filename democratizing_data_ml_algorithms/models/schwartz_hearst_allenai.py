@@ -1,3 +1,4 @@
+# DO NOT EDIT OR TEST. THIS IS A COPY OF THE ORIGINAL FILE
 # scispacy implementation of the schwartz hearst algorithm
 # https://github.com/allenai/scispacy/blob/cc1a71701f1b83bf81d36c47c271ad5ee1c03d45/scispacy/abbreviation.py
 

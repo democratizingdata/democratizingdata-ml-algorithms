@@ -1,27 +1,87 @@
-from functools import partial
-from itertools import filterfalse, islice
+# BSD 3-Clause License
+
+# Copyright (c) 2023, AUTHORS
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+"""Extract entities from text using an Named Entity Recognition (NER) model.
+
+This model uses an NER based model from the HuggingFace transformers library.
+
+It uses the following NER tags:
+ - "O": 0
+ - "B-DAT": 1
+ - "I-DAT": 2
+
+Example:
+
+    >>> import pandas as pd
+    >>> import democratizing_data_ml_algorithms.models.ner_model as ner
+    >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
+    >>> config = {
+    >>>     "model_tokenizer_name": "path/to/model_and_tokenizer",
+    >>>     "optimizer": "torch.optim.AdamW",
+    >>> }
+    >>> model = ner.NERModel_pytorch(config)
+    >>> df = rm.inference(config, df)
+"""
+
 import logging
 import os
+import warnings
+from functools import partial
+from itertools import filterfalse
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-
-import datasets as ds
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import spacy
-import torch
-import transformers as tfs
-from transformers import AutoConfig, AutoModelForTokenClassification, AutoTokenizer
 from tqdm import tqdm
 
-from datasets.utils.logging import disable_progress_bar
+from democratizing_data_ml_algorithms.models.text_segmentizer_protocol import (
+    TextSegmentizer,
+)
+
+try:
+    import datasets as ds
+    import torch
+    import transformers as tfs
+    from datasets.utils.logging import disable_progress_bar
+    from transformers import AutoModelForTokenClassification, AutoTokenizer
+except ImportError:
+    raise ImportError("Running NerModel requires extras 'ner_model' or 'all'")
 
 disable_progress_bar()
 
-from src.data.repository import Repository
-import src.models.base_model as bm
+import democratizing_data_ml_algorithms.models.base_model as bm
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.models.spacy_default_segementizer import (
+    DefaultSpacySegmentizer,
+)
 
 MODEL_OBJECTS = Tuple[
     tfs.modeling_utils.PreTrainedModel,
@@ -38,38 +98,37 @@ MODEL_OBJECTS_WITH_OPTIMIZER = Tuple[
 
 logger = logging.getLogger("ner_model")
 
-
-def validate_config(config: Dict[str, Any]) -> None:
-
-    expected_keys = {
-        "epochs",
-        "model_tokenizer_name",
-        "tokenizer_kwargs",
-        "model_kwargs",
-        "optimizer",
-        "optimizer_kwargs",
-    }
-
-    missing_keys = expected_keys - set(config.keys())
-    assert not missing_keys, f"Missing keys: {missing_keys}"
+EXPECTED_KEYS = {
+    "model_tokenizer_name",
+}
 
 
 def train(
     repository: Repository,
     config: Dict[str, Any],
-    training_logger: Optional[bm.SupportsLogging] = None,
+    training_logger: bm.SupportsLogging,
 ) -> None:
+    """Train the model.
 
-    validate_config(config)
+    Args:
+        repository (Repository): The repository containing the data.
+        config (Dict[str, Any]): The config for the model.
+        training_logger (Optional[bm.SupportsLogging], optional): The logger to use for training. Defaults to None.
+
+    Returns:
+        None
+    """
+
+    bm.validate_config(EXPECTED_KEYS, config)
     training_logger.log_parameters(bm.flatten_hparams_for_logging(config))
     model = NERModel_pytorch()
     model.train(repository, config, training_logger)
 
 
-def validate(repository: Repository, config: Dict[str, Any]) -> None:
-
-    validate_config(config)
-    raise NotImplementedError()
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
+    bm.validate_config(EXPECTED_KEYS, config)
+    model = NERModel_pytorch()
+    return model.inference(config, df)
 
 
 # ==============================================================================
@@ -81,18 +140,52 @@ def validate(repository: Repository, config: Dict[str, Any]) -> None:
 def convert_ner_tags_to_ids(
     lbl_to_id: Dict[str, int], ner_tags: List[List[str]]
 ) -> List[int]:
+    """Converts a list of NER tags to a list of NER tag ids.
+
+    Args:
+        lbl_to_id (Dict[str, int]): A mapping from NER tag to NER tag id.
+        ner_tags (List[List[str]]): A list of NER tags.
+
+    Returns:
+        List[int]: A list of NER tag ids.
+    """
     tag_f = lambda ner_tags: [lbl_to_id[ner_tag] for ner_tag in ner_tags]
     return [tag_f(ner_tags) for ner_tags in ner_tags]
 
 
-def convert_sample_ner_tages_to_ids(
+def convert_sample_ner_tags_to_ids(
     lbl_to_id: Dict[str, int], sample: Dict[str, Any]
 ) -> Dict[str, Any]:
+    """Converts the NER tags in a sample to NER tag ids.
+
+    Args:
+        lbl_to_id (Dict[str, int]): A mapping from NER tag to NER tag id.
+        sample (Dict[str, Any]): A sample should have a key "labels" with a
+                                 value of a list of NER tags.
+
+
+    Returns:
+        Dict[str, Any]: A sample with NER tags converted to NER tag ids. Replacing
+                        the key "labels" in place.
+    """
+
     sample["labels"] = convert_ner_tags_to_ids(lbl_to_id, sample["labels"])
     return sample
 
 
-def tokenize_and_align_labels(tokenizer_f, examples):
+def tokenize_and_align_labels(
+    tokenizer_f: tfs.tokenization_utils_base.PreTrainedTokenizerBase,
+    examples: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Tokenize and align labels.
+
+    Args:
+        tokenizer_f (tfs.tokenization_utils_base.PreTrainedTokenizerBase): The tokenizer to use.
+        examples (Dict[str, Any]): The examples to tokenize and align labels for.
+
+    Returns:
+        Dict[str, Any]: The tokenized and aligned labels.
+    """
     tokenized_inputs = tokenizer_f(examples["text"])
 
     labels = []
@@ -116,7 +209,7 @@ def prepare_batch(
     batch: pd.DataFrame,
 ) -> Dict[str, torch.Tensor]:
 
-    ner_to_id_f = partial(convert_sample_ner_tages_to_ids, lbl_to_id)
+    ner_to_id_f = partial(convert_sample_ner_tags_to_ids, lbl_to_id)
     tokenize_f = partial(
         tokenize_and_align_labels,
         partial(
@@ -137,6 +230,8 @@ def prepare_batch(
 
 
 def lbl_to_color(lbl):
+    import matplotlib.colors as mcolors
+
     value = 1 - lbl[0]
     saturation = max(lbl[1], lbl[2]) - min(lbl[1], lbl[2])
     BLUE = 240 / 360
@@ -147,10 +242,11 @@ def lbl_to_color(lbl):
 
 # based on
 # https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
-def color_text_figure(tokens, colors_true, colors_pred):
+def color_text_figure(tokens, colors_true, colors_pred):  # pragma: no cover
     # print("tokens", tokens)
     # print("colors_true", colors_true)
     # print("colors_pred", colors_pred)
+    import matplotlib.pyplot as plt
 
     f, ax = plt.subplots(figsize=(10, 1))
     ax.set_title(
@@ -216,13 +312,10 @@ def high_probablity_token_groups(
 
 
 class NERModel_pytorch(bm.Model):
+    """A PyTorch NER model to detect datasets in the text."""
+
     lbl_to_id = {"O": 0, "B-DAT": 1, "I-DAT": 2}
     id_to_lbl = {v: k for k, v in lbl_to_id.items()}
-
-    def __init__(
-        self,
-    ):
-        self.nlp = spacy.load("en_core_web_sm")
 
     def get_model_objects(
         self,
@@ -245,18 +338,19 @@ class NERModel_pytorch(bm.Model):
             num_labels=len(self.lbl_to_id),
             id2label=self.id_to_lbl,
             label2id=self.lbl_to_id,
+            **config.get("model_kwargs", {}),
         )
         if torch.cuda.is_available():
             model = model.cuda()
 
         if include_optimizer:
             optimizer = eval(config["optimizer"])(
-                model.parameters(), **config["optimizer_kwargs"]
+                model.parameters(), **config.get("optimizer_kwargs", {})
             )
 
             if "scheduler" in config:
                 scheduler = eval(config["scheduler"])(
-                    optimizer, **config["scheduler_kwargs"]
+                    optimizer, **config.get("scheduler_kwargs", {})
                 )
             else:
                 scheduler = bm.MockLRScheduler()
@@ -266,29 +360,21 @@ class NERModel_pytorch(bm.Model):
         else:
             return model, tokenizer, collator
 
-    def sentencize_text(self, text: str) -> List[str]:
-        max_tokens = 10_000
+    def resolve_segmentizer(self, config: Dict[str, Any]) -> TextSegmentizer:
+        if "segmentizer" in config:
+            segmentizer_class = config["segmentizer"]
+            segmentizer_kwargs = config.get("segmentizer_kwargs", {})
+            if type(segmentizer_class) is str:
+                import democratizing_data_ml_algorithms
 
-        tokens = text.split()
-        if len(tokens) > max_tokens:
-            texts = [
-                " ".join(tokens[i : i + max_tokens])
-                for i in range(0, len(tokens), max_tokens)
-            ]
-            tokens = tokens[:max_tokens]
+                segmentizer = eval(segmentizer_class)(segmentizer_kwargs)
+            else:
+                segmentizer = segmentizer_class(segmentizer_kwargs)
         else:
-            texts = [text]
+            warnings.warn("No segmentizer provided, using spacy sentence segmentation")
+            segmentizer = DefaultSpacySegmentizer()
 
-        process_generator = self.nlp.pipe(
-            texts,
-            disable=["lemmatizer", "ner", "textcat"],
-        )
-
-        sents = []
-        for doc in process_generator:
-            sents.extend([sent.text for sent in doc.sents])
-
-        return sents
+        return segmentizer
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -297,16 +383,18 @@ class NERModel_pytorch(bm.Model):
             config, include_optimizer=False
         )
 
+        segmentizer = self.resolve_segmentizer(config)
+
         model.eval()
         model.to(device)
         ng = torch.no_grad()
         ng.__enter__()
 
         def infer_sample(text: str) -> str:
-            sents = self.sentencize_text(text)  # List[List[str]]
-            assert len(sents) > 0, "No sentences found in text"
+            sents = segmentizer(text)  # List[List[str]]
+            assert len(sents) > 0, "No segments found in text"
 
-            datasets = []
+            datasets, contexts = [], []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
                 batch = tokenizer(
                     [b.split() for b in _batch],
@@ -351,16 +439,33 @@ class NERModel_pytorch(bm.Model):
                     )  # List[List[Tuple[str, float]]]
 
                     datasets.extend(detections)
+                    contexts.extend([sent] * len(detections))
 
-            return "|".join(
+            matches = "|".join(
                 list(map(lambda x: " ".join(map(lambda y: y[0], x)), datasets))
             )
 
-        if config.get("inference_progress_bar", False):
-            tqdm.pandas()
-            df["model_prediction"] = df["text"].progress_apply(infer_sample)
-        else:
-            df["model_prediction"] = df["text"].apply(infer_sample)
+            confidences = "|".join(
+                list(map(lambda x: " ".join(map(lambda y: y[1], x)), datasets))
+            )
+
+            snippets = "|".join(contexts)
+
+            return matches, snippets, confidences
+
+
+
+        df[["model_prediction", "prediction_snippet", "prediction_confidence"]] = df.apply(
+            lambda x: infer_sample(x["text"]),
+            result_type="expand",
+            axis=1,
+        )
+
+        # if config.get("inference_progress_bar", False):
+        #     tqdm.pandas()
+        #     df["model_prediction"] = df["text"].progress_apply(infer_sample)
+        # else:
+        #     df["model_prediction"] = df["text"].apply(infer_sample)
 
         ng.__exit__(None, None, None)
 
@@ -572,7 +677,7 @@ class NERModel_pytorch(bm.Model):
 
 if __name__ == "__main__":
     bm.train = train
-    bm.validate = validate
+    bm.inference = inference
     bm.main()
 
     # import src.data.kaggle_repository as kr

@@ -9,9 +9,9 @@ import pandas as pd
 from thefuzz import fuzz, process
 from tqdm import tqdm
 
-from src.data.repository import Repository
-from src.data.kaggle_repository import KaggleRepository
-from src.models.base_model import Model
+from democratizing_data_ml_algorithms.data.repository import Repository
+from democratizing_data_ml_algorithms.data.kaggle_repository import KaggleRepository
+from democratizing_data_ml_algorithms.models.base_model import Model
 
 @dc.dataclass
 class LabelsStats:
@@ -234,10 +234,9 @@ def calculate_statistics(
                               - "stats" -> containing "TP", "FP" or "FN" for
                                 each label in "labels".
     """
-    predictions = list(set(filter(
-        lambda x: len(x) > 0,
-        row["model_prediction"].strip().split("|")
-    )))
+    predictions = list(
+        set(filter(lambda x: len(x) > 0, row["model_prediction"].strip().split("|")))
+    )
     labels = row["label"].strip().split("|")
 
     true_positives, false_positives, false_negatives = retrieve_tpfpfn(
@@ -351,7 +350,9 @@ def evaluate_kaggle_private(
 
 
 if __name__ == "__main__":
-    from src.models.schwartz_hearst_model import SchwartzHearstModel
+    from democratizing_data_ml_algorithms.models.schwartz_hearst_model import (
+        SchwartzHearstModel,
+    )
 
     tqdm.pandas()
     evaluation = evaluate_kaggle_private(SchwartzHearstModel(), dict(), 1)
