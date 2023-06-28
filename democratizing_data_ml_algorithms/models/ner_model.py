@@ -54,7 +54,7 @@ import logging
 import os
 import warnings
 from functools import partial
-from itertools import filterfalse
+from itertools import chain, filterfalse
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -276,19 +276,35 @@ def color_text_figure(tokens, colors_true, colors_pred):  # pragma: no cover
 
 
 def merge_tokens_w_classifications(
-    tokens: List[str], classifications: List[float]
+    tokens: List[str],
+    token_should_be_merged: List[bool],
+    classifications: List[float],
 ) -> List[Tuple[str, float]]:
     merged = []
-    for token, classification in zip(tokens, classifications):
-        if token.startswith("##"):
-            merged[-1] = (merged[-1][0] + token[2:], merged[-1][1])
+    for token, do_merge, classification in zip(
+        tokens, token_should_be_merged, classifications
+    ):
+        if do_merge:
+            merged[-1] = (merged[-1][0] + token, (merged[-1][1]+classification)/2)
         else:
             merged.append((token, classification))
     return merged
 
 
-def is_special_token(token):
-    return token.startswith("[") and token.endswith("]")
+
+def is_special_token(token: str) -> bool:
+    """Checks if a token is a special token.
+
+    Args:
+        token (str): Token to check
+
+    Returns:
+        bool: Whether the token is a special token
+    """
+
+    return (token.startswith("[") and token.endswith("]")) or (
+        token.startswith("<") and token.endswith(">")
+    )
 
 
 def high_probablity_token_groups(
@@ -385,6 +401,17 @@ class NERModel_pytorch(bm.Model):
 
         segmentizer = self.resolve_segmentizer(config)
 
+
+        if config.get("is_roberta", False):
+            logger.info("Merging tokens based on Roberta tokenizer")
+            should_merge = lambda t: not t.startswith("Ġ") and not t.startswith("<")
+            clean = lambda t: t.replace("Ġ", "")
+        else:
+            logger.info("Merging tokens based on BERT tokenizer")
+            should_merge = lambda t: t.startswith("##")
+            clean = lambda t: t.replace("##", "")
+
+
         model.eval()
         model.to(device)
         ng = torch.no_grad()
@@ -430,7 +457,11 @@ class NERModel_pytorch(bm.Model):
                     t_classifications = list(
                         filterfalse(
                             lambda x: is_special_token(x[0]),
-                            merge_tokens_w_classifications(sent, sent_classification),
+                            merge_tokens_w_classifications(
+                                list(map(clean, sent)),
+                                list(map(should_merge, sent)),
+                                sent_classification,
+                            ),
                         )
                     )
 
@@ -439,14 +470,22 @@ class NERModel_pytorch(bm.Model):
                     )  # List[List[Tuple[str, float]]]
 
                     datasets.extend(detections)
-                    contexts.extend([sent] * len(detections))
+
+                    merged_sent = high_probablity_token_groups(
+                        t_classifications, threshold=0.0
+                    )
+                    merged_sent = " ".join(
+                        list(map(lambda x: x[0], chain(*merged_sent)))
+                    )
+
+                    contexts.extend([merged_sent] * len(detections))
 
             matches = "|".join(
                 list(map(lambda x: " ".join(map(lambda y: y[0], x)), datasets))
             )
 
             confidences = "|".join(
-                list(map(lambda x: " ".join(map(lambda y: y[1], x)), datasets))
+                list(map(lambda x: " ".join(map(lambda y: str(y[1]), x)), datasets))
             )
 
             snippets = "|".join(contexts)

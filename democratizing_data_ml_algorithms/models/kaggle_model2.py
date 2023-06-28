@@ -46,7 +46,7 @@ Example:
     >>> import democratizing_data_ml_algorithms.models.kaggle_model2 as km2
     >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
     >>> config = {
-    >>>     "pretrained_model": "path/to/model_and_tokenizer",
+    >>>     "model_tokenizer_name": "path/to/model_and_tokenizer",
     >>> }
     >>> model = km2.KaggleModel2(config)
     >>> df = rm.inference(config, df)
@@ -78,6 +78,7 @@ logger = logging.getLogger("KaggleModel2")
 
 EXPECTED_KEYS = {
     "pretrained_model",
+    "extractor",
 }
 
 
@@ -118,57 +119,83 @@ def batcher(iterable:Iterable, batch_size:int):
 class KaggleModel2(bm.Model):
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
 
+        if type(config["extractor"]) is str:
+            extractor = eval(config["extractor"])
+        else:
+            extractor = config["extractor"]
+
         df = (
-            config["extractor"]
-            .inference(config["extractor_config"], df)
-            .rename(columns={"model_prediction": "entities"})
+            extractor
+            .inference(config.get("extractor_config", {}), df)
+            .rename(columns={
+                "model_prediction": "entities",
+                "prediction_snippet": "entity_snippets",
+                "prediction_confidence": "entity_confidence",
+            })
         )
 
         # Load the model
         pretrained_config = AutoConfig.from_pretrained(
-            config["pretrained_model"], num_labels=2
+            config["model_tokenizer_name"], num_labels=2
         )
 
         model = AutoModelForSequenceClassification.from_pretrained(
-            config["pretrained_model"], config=pretrained_config
+            config["model_tokenizer_name"], config=pretrained_config
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
+        tokenizer = AutoTokenizer.from_pretrained(config["model_tokenizer_name"])
         model.eval()
 
-        def infer_sample(text: str) -> str:
-            entities = text.split("|")
+        def infer_sample(
+            entities: str,
+            entity_snippets:str,
+            entity_confidence:str,
+        ) -> str:
+            entities = entities.split("|")
+            entity_snippets = entity_snippets.split("|")
+            #continue here
+            print(entities, entity_snippets)
+            filtered_entities, filtered_entity_snippets, filtered_confidences = [], [], []
+            for batch_entities_batch_snippets in batcher(zip(entities, entity_snippets), config["batch_size"]):
+                batch_entities, batch_snippets = zip(*batch_entities_batch_snippets)
+                print("batch_entities", batch_entities)
+                print("batch_snippets", batch_snippets)
 
-            filtered_entities = []
-            for batch in batcher(entities, config["batch_size"]):
 
                 batch_features = tokenizer(
-                    batch,
-                    truncation=True,
-                    max_length=64,
-                    padding="max_length",
-                    add_special_tokens=True,
-                    return_tensors="pt",
+                    batch_entities,
+                    **config.get("tokenizer_call_kwargs", {}),
                 )
                 model_outputs = model(**batch_features, return_dict=True)
                 classifications = (
                     torch.softmax(model_outputs.logits, -1).detach().cpu().numpy()
                 )
 
-                filtered_entities.extend(
-                    list(
-                        map(
-                            lambda ent_cls: ent_cls[0],
-                            filter(
-                                lambda ent_cls: ent_cls[1][1] > config["min_prob"],
-                                zip(batch, classifications),
-                            ),
-                        )
+                entities, snippets, confidences =  zip(*list(
+                        filter(
+                            lambda ent_cls: ent_cls[1][1] >= config.get("threshold", 0.7),
+                            zip(batch_entities, batch_snippets, classifications),
+                        ),
                     )
                 )
-            return "|".join(filtered_entities)
+                filtered_entities.extend(entities)
+                filtered_entity_snippets.extend(snippets)
+                filtered_confidences.extend(confidences)
 
-        df["model_prediction"] = df["entities"].apply(infer_sample)
+            return (
+                "|".join(filtered_entities),
+                "|".join(filtered_entity_snippets),
+                "|".join(filtered_confidences),
+            )
+
+        # df["model_prediction"] = df["entities"].apply(infer_sample)
+
+        df[["model_prediction", "prediction_snippet", "prediction_confidence"]] = df.apply(
+            lambda x: infer_sample(x["entities"], x["entity_snippets"], x["entity_confidence"]),
+            result_type="expand",
+            axis=1,
+        )
+        df.drop(columns=["entities", "entity_snippets", "entity_confidence"], inplace=True)
 
         return df
 
