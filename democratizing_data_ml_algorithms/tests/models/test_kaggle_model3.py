@@ -223,18 +223,18 @@ def test_mapfilter_brlessthantwowords():
 
 def test_mapfilter_partialmatchdatasets():
     inputs = [
-        "This model was trained on the Really Great Dataset (RGD)",
-        " and the Really Bad Dataset (RBD) and it went well",
-        " (though not that well).",
+        "(RGD)",
+        "(RBD)",
+        "(though not that well).",
     ]
 
     datasets = [
-        "Really Great Dataset (RGD)"
+        " (RGD) "
     ]
 
     expected = [
-        "This model was trained on the Really Great Dataset (RGD)",
-        " and the Really Bad Dataset (RBD) and it went well",
+        "(RBD)",
+        "(though not that well).",
     ]
 
     br_pat = re.compile(
@@ -253,7 +253,26 @@ def test_mapfilter_traincounts():
 
 
 def test_mapfilter_brpatsub():
-    pass
+    inputs = [
+        "This model was trained on the Really Great Dataset (RGD)",
+        " and the Really Bad Dataset (RBD) and it went well",
+        " (though not that well).",
+    ]
+
+    expected = [
+        "This model was trained on the Really Great Dataset",
+        " and the Really Bad Dataset and it went well",
+        ".",
+    ]
+
+    br_pat = re.compile(
+        r"\s?\((.*)\)"
+    )
+
+
+    actual = list(km3.MapFilter_BRPatSub(br_pat=br_pat)(input=inputs))
+
+    assert actual == expected
 
 
 def test_sentencizer():

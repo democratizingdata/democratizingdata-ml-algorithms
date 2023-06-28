@@ -392,9 +392,9 @@ class NERModel_pytorch(bm.Model):
 
         def infer_sample(text: str) -> str:
             sents = segmentizer(text)  # List[List[str]]
-            assert len(sents) > 0, "No sentences found in text"
+            assert len(sents) > 0, "No segments found in text"
 
-            datasets = []
+            datasets, contexts = [], []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
                 batch = tokenizer(
                     [b.split() for b in _batch],
@@ -439,16 +439,29 @@ class NERModel_pytorch(bm.Model):
                     )  # List[List[Tuple[str, float]]]
 
                     datasets.extend(detections)
+                    contexts.extend([sent] * len(detections))
 
-            return "|".join(
+            matches = "|".join(
                 list(map(lambda x: " ".join(map(lambda y: y[0], x)), datasets))
             )
 
-        if config.get("inference_progress_bar", False):
-            tqdm.pandas()
-            df["model_prediction"] = df["text"].progress_apply(infer_sample)
-        else:
-            df["model_prediction"] = df["text"].apply(infer_sample)
+            snippets = "|".join(contexts)
+
+            return matches, snippets
+
+
+
+        df[["model_prediction", "prediction_snippet"]] = df.apply(
+            lambda x: infer_sample(x["text"]),
+            result_type="expand",
+            axis=1,
+        )
+
+        # if config.get("inference_progress_bar", False):
+        #     tqdm.pandas()
+        #     df["model_prediction"] = df["text"].progress_apply(infer_sample)
+        # else:
+        #     df["model_prediction"] = df["text"].apply(infer_sample)
 
         ng.__exit__(None, None, None)
 
