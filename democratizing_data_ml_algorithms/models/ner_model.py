@@ -44,10 +44,10 @@ Example:
     >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
     >>> config = {
     >>>     "model_tokenizer_name": "path/to/model_and_tokenizer",
-    >>>     "optimizer": "torch.optim.AdamW",
+    >>>     "batch_size": 16,
     >>> }
     >>> model = ner.NERModel_pytorch(config)
-    >>> df = rm.inference(config, df)
+    >>> df = model.inference(config, df)
 """
 
 import logging
@@ -100,6 +100,7 @@ logger = logging.getLogger("ner_model")
 
 EXPECTED_KEYS = {
     "model_tokenizer_name",
+    "batch_size",
 }
 
 
@@ -424,7 +425,7 @@ class NERModel_pytorch(bm.Model):
             datasets, contexts = [], []
             for _batch in spacy.util.minibatch(sents, config["batch_size"]):
                 batch = tokenizer(
-                    [b.split() for b in _batch],
+                    _batch,
                     return_tensors="pt",
                     padding=True,
                     **config.get("tokenizer_call_kwargs", {}),
