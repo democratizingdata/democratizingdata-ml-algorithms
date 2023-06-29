@@ -192,8 +192,8 @@ class RegexModel(bm.Model):
         >>> import pandas as pd
         >>> import democratizing_data_ml_algorithms.models.regex_model as rm
         >>> df = pd.DataFrame({"text": ["This is a sentence with an entity in it."]})
-        >>> config = {"regex_pattern": r"entity"}
-        >>> df = rm.inference(config, df)
+        >>> config = {"regex_pattern": r"", "keywords": ["entity"]}
+        >>> df = rm.RegexModel(config).inference({}, df)
 
     Attributes:
         entity_pattern (re.Pattern): Compiled regex pattern for extracting entities
