@@ -51,9 +51,9 @@ To use already trained models install the package using pip
 
 `pip install git+https://github.com/DemocratizingData/democratizingdata-ml-algorithms.git`
 
-By default this installs only the minimum dependencies. Each model may have its
+By default, this installs only the minimum dependencies. Each model may have its
 own additionally required dependencies. To install the dependencies for a model
-look for the extras in `setup.py`. For example to install the extras for
+look for the extras in `setup.py`. For example, to install the extras for
 `kaggle_model2` run:
 
 `python -m pip install "git+https://github.com/DemocratizingData/democratizingdata-ml-algorithms.git#egg=democratizing_data_ml_algorithms[kaggle_model2]"`
@@ -62,7 +62,7 @@ To install all the extras run:
 
 `python -m pip install "git+https://github.com/DemocratizingData/democratizingdata-ml-algorithms.git#egg=democratizing_data_ml_algorithms[all]"`
 
-You may run into dependecy hell doing this as models may have conflicting imports.
+You may run into dependency hell doing this as models may have conflicting imports.
 
 ### Running Models
 
