@@ -12,7 +12,6 @@ class DefaultSpacySegmentizer(TextSegmentizer):
         self.max_tokens = config.get("max_tokens", 10000)
 
     def __call__(self, text: str) -> List[str]:
-
         tokens = text.split()
         if len(tokens) > self.max_tokens:
             texts = [

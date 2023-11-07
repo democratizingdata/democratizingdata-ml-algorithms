@@ -95,7 +95,6 @@ class Model1:
         sents = []
         full_text = list(map(lambda s: s["text"].replace("\n", " ").split(), json_text))
         for ft in full_text:
-
             st_end = generate_s_e_window_sliding(
                 len(ft), self.win_size, int(0.75 * self.win_size)
             )
@@ -123,7 +122,6 @@ class Model1:
         sents = []
         full_text = list(map(lambda s: s["text"].replace("\n", " ").split(), text))
         for ft in full_text:
-
             st_end = generate_s_e_window_sliding(
                 len(ft), self.win_size, int(0.75 * self.win_size)
             )
@@ -190,7 +188,6 @@ class Model1:
         return list(zip(unique_ids, predictions))
 
     def predict(self, text: Document) -> List[str]:
-
         accepted_predictions = get_filtered_models_predictions(text)
 
         predictions = find_all_pred_in_text(
@@ -276,7 +273,6 @@ def remove_overlap(preds, preds_low_confidence):
 
 # https://www.kaggle.com/code/dathudeptrai/biomed-roberta-scibert-base?scriptVersionId=66513188&cellId=34
 def get_filtered_models_predictions(text: pd.DataFrame, batch_size=128):
-
     accepted_preds = []
 
     test_df = text

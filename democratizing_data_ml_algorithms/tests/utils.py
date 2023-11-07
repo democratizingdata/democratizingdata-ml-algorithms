@@ -124,7 +124,6 @@ class dotdict(dict):
 
 
 def mock_tokenize_f(text: str) -> dotdict:
-
     tokens = [t.split() for t in text]
 
     def word_ids_f(batch_index: int) -> List[int]:

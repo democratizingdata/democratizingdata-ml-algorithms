@@ -137,7 +137,6 @@ def test_color_text_figure():
 
 
 def test_merge_tokens_w_classifications():
-
     tokens = ["This", "is", "a", "data", "##set", "."]
     classifications = [0, 0, 0, 1, 1, 0]
 
@@ -164,7 +163,6 @@ def test_is_special_token():
 
 
 def test_high_probablity_token_groups_thresholds():
-
     token_classifications = [
         ("We", 0.0),
         ("used", 0.0),
@@ -201,7 +199,6 @@ def test_high_probablity_token_groups_thresholds():
 
 
 def test_high_probablity_token_groups_mulitple_groups():
-
     token_classifications = [
         ("We", 0.0),
         ("used", 0.0),
@@ -238,7 +235,6 @@ def test_high_probablity_token_groups_mulitple_groups():
 
 @pytest.mark.uses_model_params
 def test_ner_model_pytorch_get_model_objects():
-
     include_optimizer = False
     config = dict(
         model_tokenizer_name="distilbert-base-uncased",
@@ -266,7 +262,6 @@ def test_ner_model_pytorch_get_model_objects():
 
 @pytest.mark.uses_model_params
 def test_ner_model_pytorch_get_model_objects_with_optimizer():
-
     include_optimizer = True
     config = dict(
         model_tokenizer_name="distilbert-base-uncased",

@@ -260,9 +260,15 @@ class RegexModel(bm.Model):
             )
 
             matches, snippets = zip(*matches_snippets) if matches_snippets else ([], [])
-            return "|".join(matches), "|".join(snippets), "|".join("1.0" for _ in matches)
+            return (
+                "|".join(matches),
+                "|".join(snippets),
+                "|".join("1.0" for _ in matches),
+            )
 
-        df[["model_prediction", "prediction_snippet", "prediction_confidence"]] = df.apply(
+        df[
+            ["model_prediction", "prediction_snippet", "prediction_confidence"]
+        ] = df.apply(
             lambda x: infer_f(x["text"]),
             result_type="expand",
             axis=1,

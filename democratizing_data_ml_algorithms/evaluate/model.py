@@ -13,6 +13,7 @@ from democratizing_data_ml_algorithms.data.repository import Repository
 from democratizing_data_ml_algorithms.data.kaggle_repository import KaggleRepository
 from democratizing_data_ml_algorithms.models.base_model import Model
 
+
 @dc.dataclass
 class LabelsStats:
     labels: List[str]
@@ -31,8 +32,7 @@ class LabelsStats:
             statistics=json_encoding["statistics"],
         )
 
-    def merge(self, other:"LabelsStats") -> "LabelsStats":
-
+    def merge(self, other: "LabelsStats") -> "LabelsStats":
         def idx_or_none(lst, item):
             try:
                 return lst.index(item)
@@ -40,36 +40,38 @@ class LabelsStats:
                 return None
 
         def merge_single_statistic(
-            self_idx:Union[int, None],
-            other_idx:Union[int, None]) -> str:
-
+            self_idx: Union[int, None], other_idx: Union[int, None]
+        ) -> str:
             self_stat = self.statistics[self_idx] if self_idx is not None else None
             other_stat = other.statistics[other_idx] if other_idx is not None else None
 
-
-
         all_labels = sorted(list(set(self.labels + other.labels)))
-        all_statistics = list(starmap(
-            merge_single_statistic,
-            map(
-                lambda lbl: (idx_or_none(self.labels, lbl), idx_or_none(other.labels, lbl)),
-                all_labels
+        all_statistics = list(
+            starmap(
+                merge_single_statistic,
+                map(
+                    lambda lbl: (
+                        idx_or_none(self.labels, lbl),
+                        idx_or_none(other.labels, lbl),
+                    ),
+                    all_labels,
+                ),
             )
-        ))
+        )
 
 
-
-
-def merge_single_stat(this:str, that:str, lbl:str) -> str:
+def merge_single_stat(this: str, that: str, lbl: str) -> str:
     if this == "TP" or that == "TP":
         return "TP"
     elif this != that:
-        raise ValueError("Inconsistent stats for label: {}. got {} - {}".format(lbl, this, that))
+        raise ValueError(
+            "Inconsistent stats for label: {}. got {} - {}".format(lbl, this, that)
+        )
     else:
         return this
 
 
-def merge_stats(row:pd.DataFrame) -> Dict[str, Any]:
+def merge_stats(row: pd.DataFrame) -> Dict[str, Any]:
     _id = row["id"]
     self_labels = row["statistics_self"]["labels"]
     other_labels = row["statistics_other"]["labels"]
@@ -83,11 +85,13 @@ def merge_stats(row:pd.DataFrame) -> Dict[str, Any]:
         merged_lbls.append(self_lbl)
 
         if self_lbl in other_labels:
-            merged_stats.append(merge_single_stat(
-                self_stat,
-                other_stats[other_labels.index(self_lbl)],
-                self_lbl,
-            ))
+            merged_stats.append(
+                merge_single_stat(
+                    self_stat,
+                    other_stats[other_labels.index(self_lbl)],
+                    self_lbl,
+                )
+            )
         else:
             merged_stats.append(self_stat)
 
@@ -96,7 +100,7 @@ def merge_stats(row:pd.DataFrame) -> Dict[str, Any]:
     #     merged_lbls.append(other_lbl)
     #     merged_stats.append(other_stat)
 
-    return {"id":_id, "statistics": dict(labels=merged_lbls, stats=merged_stats)}
+    return {"id": _id, "statistics": dict(labels=merged_lbls, stats=merged_stats)}
 
 
 @dc.dataclass
@@ -151,7 +155,7 @@ class ModelEvaluation:
         - Recall: {self.recall}
         """
 
-    def __or__(self, other:"ModelEvaluation") -> "ModelEvaluation":
+    def __or__(self, other: "ModelEvaluation") -> "ModelEvaluation":
         """Combine two model evaluations.
 
         Args:
@@ -163,21 +167,26 @@ class ModelEvaluation:
         if not isinstance(other, ModelEvaluation):
             raise TypeError("Can only combine ModelEvaluation objects.")
 
-        assert np.setdiff1d(
-            self.output_statistics.loc[:, ["id"]].values,
-            other.output_statistics.loc[:, ["id"]].values
-        ).size == 0, "Can only combine ModelEvaluation objects with same documents"
+        assert (
+            np.setdiff1d(
+                self.output_statistics.loc[:, ["id"]].values,
+                other.output_statistics.loc[:, ["id"]].values,
+            ).size
+            == 0
+        ), "Can only combine ModelEvaluation objects with same documents"
 
-        merged_df = self.output_statistics.loc[:, ["id", "statistics"]].merge(
-            other.output_statistics.loc[:, ["id", "statistics"]],
-            on="id",
-            suffixes=("_self", "_other"),
-        ).apply(merge_stats, axis=1, result_type="expand")
+        merged_df = (
+            self.output_statistics.loc[:, ["id", "statistics"]]
+            .merge(
+                other.output_statistics.loc[:, ["id", "statistics"]],
+                on="id",
+                suffixes=("_self", "_other"),
+            )
+            .apply(merge_stats, axis=1, result_type="expand")
+        )
 
         merged_stats = list(
-            chain(
-                *list(map(lambda x: x["stats"], merged_df["statistics"].values))
-            )
+            chain(*list(map(lambda x: x["stats"], merged_df["statistics"].values)))
         )
 
         return ModelEvaluation(
@@ -265,7 +274,6 @@ def evaluate_model(
     processor: Callable[[str], str] = lambda s: s.lower(),
     min_score: int = 90,
 ) -> ModelEvaluation:
-
     validation_dataframe = repository.get_validation_data()
 
     start = time()
@@ -299,6 +307,7 @@ def evaluate_model(
         fp=global_stats.count("FP"),
         fn=global_stats.count("FN"),
     )
+
 
 def evaluate_kaggle_private(
     model: Model,

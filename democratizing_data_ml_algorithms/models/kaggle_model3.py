@@ -144,6 +144,7 @@ logger = logging.getLogger("kaggle_model3")
 
 EXPECTED_KEYS = ["keywords"]
 
+
 def train(
     repository: Repository,
     config: Dict[str, Any],
@@ -289,9 +290,7 @@ class KaggleModel3(bm.Model):
 
         texts = list(chain(*train_texts))
 
-        ssai_par_datasets = KaggleModel3.tokenized_extract(
-            texts, KaggleModel3.KEYWORDS
-        )
+        ssai_par_datasets = KaggleModel3.tokenized_extract(texts, KaggleModel3.KEYWORDS)
         words = list(chain(*[KaggleModel3.tokenize(ds) for ds in ssai_par_datasets]))
 
         mapfilters = [
@@ -587,7 +586,6 @@ class MapFilter_BRLessThanTwoWords(MapFilter):
     """This filters out strings that contain less than two words, excluding phrases in parenthesis."""
 
     def __init__(self, br_pat: re.Pattern, tokenize_pat: re.Pattern):
-
         filter_f: Callable[[str], bool] = (
             lambda ds: len(tokenize_pat.findall(br_pat.sub("", ds))) > 2
         )
@@ -599,6 +597,7 @@ class MapFilter_BRLessThanTwoWords(MapFilter):
 
 
 # ==============================================================================
+
 
 # ==============================================================================
 # Second stage map filters that can be applied batchwise and applied after
@@ -612,7 +611,6 @@ class MapFilter_PartialMatchDatasets(MapFilter):
         br_pat: re.Pattern,
         n_most_common: Optional[int] = None,
     ):
-
         counter = Counter(dataset)
         abbrs_used = set()
         golden_ds_with_br = []
@@ -764,7 +762,6 @@ class MapFilter_BRPatSub(MapFilter):
     """This removes the strings between parenthesis."""
 
     def __init__(self, br_pat):
-
         map_f: Callable[[str], str] = lambda ds: br_pat.sub("", ds)
 
         super().__init__(map_f=map_f)

@@ -25,7 +25,6 @@ from pandarallel import pandarallel
 
 
 def infer_sample(nlp, char_limit: int, text: List[Dict[str, str]]) -> str:
-
     extractions = dict()
 
     all_text = ""
@@ -63,7 +62,6 @@ class SchwartzHearstModel_AllenAI(Model):
     def inference_dataframe(
         self, config: Dict[str, Any], df: pd.DataFrame
     ) -> pd.DataFrame:
-
         infer_f = partial(infer_sample, self.nlp, config["char_limit"])
 
         tqdm.pandas()

@@ -69,7 +69,6 @@ def tag_sentence(
     regex_labels: List[re.Pattern],
     sentence: spacy.tokens.span.Span,
 ) -> Tuple[List[str], List[str], List[str]]:
-
     # find matches for each label and sort by length, longest first
     # shorter matches might be a subset of a longer match. So, we'll
     # prefer the longer matches first.
@@ -184,7 +183,6 @@ def convert_document_to_samples(nlp: spacy.language.Language, row: pd.DataFrame)
 def save_samples(
     train_location: str, validation_location: str, row: pd.DataFrame
 ) -> None:
-
     save_train_path = os.path.join(train_location, row["id"] + ".tsv")
     save_validation_path = os.path.join(validation_location, row["id"] + ".tsv")
 

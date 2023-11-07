@@ -78,7 +78,6 @@ class KaggleModel1(bm.Model):
         return sents
 
     def get_support_mask_embed(self, path: str, n_samples: int) -> np.ndarray:
-
         support_tokens = np.load(path)  # [n, embed_dim]
 
         # print("getting", n_samples, "from", path, support_tokens.shape)
@@ -148,7 +147,6 @@ class KaggleModel1(bm.Model):
         tokens_classifications: List[Tuple[str, float]],
         threshold: float = 0.9,
     ) -> List[List[Tuple[str, float]]]:
-
         datasets = []
         dataset = []
         for token, score in tokens_classifications:
@@ -165,7 +163,6 @@ class KaggleModel1(bm.Model):
         return datasets
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
-
         if self.model is None:
             model_config = tfs.AutoConfig.from_pretrained(
                 config["model_tokenizer_name"]

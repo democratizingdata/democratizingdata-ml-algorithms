@@ -36,14 +36,18 @@ import democratizing_data_ml_algorithms.models.kaggle_model3 as km3
 def test_train():
     pass
 
+
 def test_inference():
     pass
+
 
 def test_kaggle_model3_train():
     pass
 
+
 def test_kaggle_model3_inference():
     pass
+
 
 def test_kaggle_model3_get_parenthesis():
     text = (
@@ -77,6 +81,7 @@ def test_kaggle_model3_get_index():
     actual = km3.KaggleModel3.get_index(texts=texts, words=words)
 
     assert actual == expected
+
 
 def test_kaggle_model3_tokenize():
     text = "This model was trained on the Really Great Dataset (RGD)"
@@ -170,7 +175,9 @@ def test_mapfilter_stopwords_upper():
         " (though not that well).",
     ]
 
-    actual = list(km3.MapFilter_StopWords(stopwords=stop_words, do_lower=False)(input=inputs))
+    actual = list(
+        km3.MapFilter_StopWords(stopwords=stop_words, do_lower=False)(input=inputs)
+    )
 
     assert actual == expected
 
@@ -202,12 +209,10 @@ def test_mapfilter_brlessthantwowords():
         "Example to the should be caught",
         "Another the should be caught too",
         "Should not be caught",
-        "Filtered Out (FO)"
+        "Filtered Out (FO)",
     ]
 
-    br_pat = re.compile(
-        r"\s?\((.*)\)"
-    )
+    br_pat = re.compile(r"\s?\((.*)\)")
     tokenize_pat = re.compile(r"[\w']+|[^\w ]")
 
     expected = [
@@ -216,7 +221,11 @@ def test_mapfilter_brlessthantwowords():
         "Should not be caught",
     ]
 
-    actual = list(km3.MapFilter_BRLessThanTwoWords(br_pat=br_pat, tokenize_pat=tokenize_pat)(inputs))
+    actual = list(
+        km3.MapFilter_BRLessThanTwoWords(br_pat=br_pat, tokenize_pat=tokenize_pat)(
+            inputs
+        )
+    )
 
     assert actual == expected
 
@@ -228,18 +237,14 @@ def test_mapfilter_partialmatchdatasets():
         "(though not that well).",
     ]
 
-    datasets = [
-        " (RGD) "
-    ]
+    datasets = [" (RGD) "]
 
     expected = [
         "(RBD)",
         "(though not that well).",
     ]
 
-    br_pat = re.compile(
-        r"\s?\((.*)\)"
-    )
+    br_pat = re.compile(r"\s?\((.*)\)")
 
     actual = list(
         km3.MapFilter_PartialMatchDatasets(dataset=datasets, br_pat=br_pat)(inputs)
@@ -265,10 +270,7 @@ def test_mapfilter_brpatsub():
         ".",
     ]
 
-    br_pat = re.compile(
-        r"\s?\((.*)\)"
-    )
-
+    br_pat = re.compile(r"\s?\((.*)\)")
 
     actual = list(km3.MapFilter_BRPatSub(br_pat=br_pat)(input=inputs))
 
@@ -281,4 +283,3 @@ def test_sentencizer():
 
 def test_dotsplitsentencizer():
     pass
-

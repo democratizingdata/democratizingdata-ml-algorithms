@@ -30,25 +30,29 @@
 
 import democratizing_data_ml_algorithms.models.kaggle_model2 as km2
 
+
 def test_train():
     pass
+
 
 def test_inference():
     pass
 
+
 def test_batcher():
-    collection = [1,2,3,4,5,6,7,8,9,10]
+    collection = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     batcher = km2.batcher(collection, 3)
 
-    expected = [[1,2,3],[4,5,6],[7,8,9],[10]]
+    expected = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10]]
     actual = list(batcher)
 
     assert expected == actual
 
+
 def test_kagglemodel2_inference():
     pass
 
+
 def test_kagglemodel2_train():
     pass
-

@@ -55,6 +55,7 @@ logger = logging.getLogger("RegexModel")
 
 EXPECTED_KEYS = ["model_path", "keywords"]
 
+
 def train(
     repository: Repository,
     config: Dict[str, Any],
@@ -62,15 +63,14 @@ def train(
 ) -> None:
     raise NotImplementedError("RegexModel does not support training")
 
-def inference(
-    config: Dict[str, Any], df: pd.DataFrame
-) -> pd.DataFrame:
 
+def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
     bm.validate_config(config, EXPECTED_KEYS)
 
     model = Kaggle3RegexInference(config)
 
     return model.inference(config, df)
+
 
 class Kaggle3RegexInference(RegexModel):
     def __init__(self, config: Dict[str, Any]):

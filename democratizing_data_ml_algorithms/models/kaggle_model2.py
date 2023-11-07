@@ -104,13 +104,12 @@ def train(
     model.train(repository, config, training_logger)
 
 
-
 def inference(config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
     pass
 
 
 # https://stackoverflow.com/a/62913856/2691018
-def batcher(iterable:Iterable, batch_size:int):
+def batcher(iterable: Iterable, batch_size: int):
     iterator = iter(iterable)
     while batch := list(islice(iterator, batch_size)):
         yield batch
@@ -118,20 +117,17 @@ def batcher(iterable:Iterable, batch_size:int):
 
 class KaggleModel2(bm.Model):
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
-
         if type(config["extractor"]) is str:
             extractor = eval(config["extractor"])
         else:
             extractor = config["extractor"]
 
-        df = (
-            extractor
-            .inference(config.get("extractor_config", {}), df)
-            .rename(columns={
+        df = extractor.inference(config.get("extractor_config", {}), df).rename(
+            columns={
                 "model_prediction": "entities",
                 "prediction_snippet": "entity_snippets",
                 "prediction_confidence": "entity_confidence",
-            })
+            }
         )
 
         # Load the model
@@ -148,19 +144,22 @@ class KaggleModel2(bm.Model):
 
         def infer_sample(
             entities: str,
-            entity_snippets:str,
-            entity_confidence:str,
+            entity_snippets: str,
+            entity_confidence: str,
         ) -> str:
             entities = entities.split("|")
             entity_snippets = entity_snippets.split("|")
-            #continue here
-            print(entities, entity_snippets)
-            filtered_entities, filtered_entity_snippets, filtered_confidences = [], [], []
-            for batch_entities_batch_snippets in batcher(zip(entities, entity_snippets), config["batch_size"]):
-                batch_entities, batch_snippets = zip(*batch_entities_batch_snippets)
-                print("batch_entities", batch_entities)
-                print("batch_snippets", batch_snippets)
+            # continue here
 
+            filtered_entities, filtered_entity_snippets, filtered_confidences = (
+                [],
+                [],
+                [],
+            )
+            for batch_entities_batch_snippets in batcher(
+                zip(entities, entity_snippets), config["batch_size"]
+            ):
+                batch_entities, batch_snippets = zip(*batch_entities_batch_snippets)
 
                 batch_features = tokenizer(
                     batch_entities,
@@ -171,16 +170,24 @@ class KaggleModel2(bm.Model):
                     torch.softmax(model_outputs.logits, -1).detach().cpu().numpy()
                 )
 
-                entities, snippets, confidences =  zip(*list(
-                        filter(
-                            lambda ent_cls: ent_cls[1][1] >= config.get("threshold", 0.7),
-                            zip(batch_entities, batch_snippets, classifications),
-                        ),
+                vals = list(
+                    zip(
+                        *list(
+                            filter(
+                                lambda ent_cls: ent_cls[2][1]
+                                >= config.get("threshold", 0.7),
+                                zip(batch_entities, batch_snippets, classifications),
+                            ),
+                        )
                     )
                 )
-                filtered_entities.extend(entities)
-                filtered_entity_snippets.extend(snippets)
-                filtered_confidences.extend(confidences)
+
+                if vals:
+                    entities, snippets, confidences = vals
+
+                    filtered_entities.extend(entities)
+                    filtered_entity_snippets.extend(snippets)
+                    filtered_confidences.extend(confidences)
 
             return (
                 "|".join(filtered_entities),
@@ -190,12 +197,18 @@ class KaggleModel2(bm.Model):
 
         # df["model_prediction"] = df["entities"].apply(infer_sample)
 
-        df[["model_prediction", "prediction_snippet", "prediction_confidence"]] = df.apply(
-            lambda x: infer_sample(x["entities"], x["entity_snippets"], x["entity_confidence"]),
+        df[
+            ["model_prediction", "prediction_snippet", "prediction_confidence"]
+        ] = df.apply(
+            lambda x: infer_sample(
+                x["entities"], x["entity_snippets"], x["entity_confidence"]
+            ),
             result_type="expand",
             axis=1,
         )
-        df.drop(columns=["entities", "entity_snippets", "entity_confidence"], inplace=True)
+        df.drop(
+            columns=["entities", "entity_snippets", "entity_confidence"], inplace=True
+        )
 
         return df
 
@@ -215,9 +228,10 @@ class KaggleModel2(bm.Model):
 
         tokenizer = AutoTokenizer.from_pretrained(config["pretrained_model"])
 
-
         if "learning_rate" in config:
-            opt = eval(config["optimizer"])(model.parameters(), lr=config["learning_rate"])
+            opt = eval(config["optimizer"])(
+                model.parameters(), lr=config["learning_rate"]
+            )
         else:
             opt = eval(config["optimizer"])(model.parameters())
 

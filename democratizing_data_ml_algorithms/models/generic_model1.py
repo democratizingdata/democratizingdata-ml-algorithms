@@ -353,7 +353,6 @@ def filter_prep_tokens(
 # based on
 # https://stackoverflow.com/questions/36264305/matplotlib-multi-colored-title-text-in-practice
 def color_text_figure_binary(tokens, cmap, y_true, y_pred, threshold=0.5):
-
     f, ax = plt.subplots(figsize=(10, 1))
     r = f.canvas.get_renderer()
     ax.set_axis_off()
@@ -492,7 +491,6 @@ class GenericModel1(bm.Model):
     def get_model_objects(
         self, config: Dict[str, Any], include_optimizer: bool
     ) -> None:
-
         tokenizer = tfs.AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"], **config.get("tokenizer_kwargs", {})
         )
@@ -598,7 +596,6 @@ class GenericModel1(bm.Model):
         return sents
 
     def get_support_mask_embed(self, path: str, n_samples: int) -> np.ndarray:
-
         support_tokens = np.load(path)  # [n, embed_dim]
 
         sample_idxs = np.random.choice(np.arange(support_tokens.shape[0]), n_samples)
@@ -614,7 +611,6 @@ class GenericModel1(bm.Model):
         return support_tokens
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
-
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # [batch, token, embed_dim]
         mask_embedding = self.get_support_mask_embed(
@@ -1120,7 +1116,6 @@ class GenericModel1(bm.Model):
                             )
 
                         else:
-
                             (tokens, y_true, y_pred) = filter_prep_tokens(
                                 tokenizer.convert_ids_to_tokens(
                                     batch_query["input_ids"][0].detach().cpu().numpy()
@@ -1466,7 +1461,6 @@ class GenericModel1(bm.Model):
                                     )
 
                                 else:
-
                                     (tokens, y_true, y_pred) = filter_prep_tokens(
                                         tokenizer.convert_ids_to_tokens(
                                             batch_query["input_ids"][0]

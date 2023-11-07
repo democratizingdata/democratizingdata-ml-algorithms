@@ -209,7 +209,6 @@ def prepare_batch(
     config: Dict[str, Any],
     batch: pd.DataFrame,
 ) -> Dict[str, torch.Tensor]:
-
     ner_to_id_f = partial(convert_sample_ner_tags_to_ids, lbl_to_id)
     tokenize_f = partial(
         tokenize_and_align_labels,
@@ -286,11 +285,10 @@ def merge_tokens_w_classifications(
         tokens, token_should_be_merged, classifications
     ):
         if do_merge:
-            merged[-1] = (merged[-1][0] + token, (merged[-1][1]+classification)/2)
+            merged[-1] = (merged[-1][0] + token, (merged[-1][1] + classification) / 2)
         else:
             merged.append((token, classification))
     return merged
-
 
 
 def is_special_token(token: str) -> bool:
@@ -312,7 +310,6 @@ def high_probablity_token_groups(
     tokens_classifications: List[Tuple[str, float]],
     threshold: float = 0.9,
 ) -> List[List[Tuple[str, float]]]:
-
     datasets = []
     dataset = []
     for token, score in tokens_classifications:
@@ -339,7 +336,6 @@ class NERModel_pytorch(bm.Model):
         config: Dict[str, Any],
         include_optimizer: bool = False,
     ) -> Union[MODEL_OBJECTS, MODEL_OBJECTS_WITH_OPTIMIZER]:
-
         tokenizer = AutoTokenizer.from_pretrained(
             config["model_tokenizer_name"],
             **config.get("tokenizer_kwargs", {}),
@@ -402,7 +398,6 @@ class NERModel_pytorch(bm.Model):
 
         segmentizer = self.resolve_segmentizer(config)
 
-
         if config.get("is_roberta", False):
             logger.info("Merging tokens based on Roberta tokenizer")
             should_merge = lambda t: not t.startswith("Ġ") and not t.startswith("<")
@@ -411,7 +406,6 @@ class NERModel_pytorch(bm.Model):
             logger.info("Merging tokens based on BERT tokenizer")
             should_merge = lambda t: t.startswith("##")
             clean = lambda t: t.replace("##", "")
-
 
         model.eval()
         model.to(device)
@@ -493,9 +487,9 @@ class NERModel_pytorch(bm.Model):
 
             return matches, snippets, confidences
 
-
-
-        df[["model_prediction", "prediction_snippet", "prediction_confidence"]] = df.apply(
+        df[
+            ["model_prediction", "prediction_snippet", "prediction_confidence"]
+        ] = df.apply(
             lambda x: infer_sample(x["text"]),
             result_type="expand",
             axis=1,
@@ -547,7 +541,6 @@ class NERModel_pytorch(bm.Model):
         config: Dict[str, Any],
         training_logger: bm.SupportsLogging,
     ) -> None:
-
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         model, tokenizer, collator, optimizer, scheduler = self.get_model_objects(
@@ -579,7 +572,6 @@ class NERModel_pytorch(bm.Model):
                 step += 1
 
                 if step % config.get("steps_per_eval", 5) == 0:
-
                     if config["save_model"]:
                         save_path = os.path.join(
                             config["model_path"],

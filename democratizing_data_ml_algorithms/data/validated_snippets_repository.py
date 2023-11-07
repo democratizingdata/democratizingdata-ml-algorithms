@@ -24,6 +24,7 @@ VALIDATED_SNIPPET_PATH: str = os.path.join(
 
 logger = logging.getLogger("ValidatedSnippetsRepository")
 
+
 class ValidatedSnippetsRepository(Repository):
     def __init__(self, mode: SnippetRepositoryMode):
         self.mode = mode
@@ -47,7 +48,7 @@ class ValidatedSnippetsRepository(Repository):
                             unidecode(row["snippet"]),
                         )[0].strip(),
                     ).doc,
-                )
+                ),
             )
         )
 
@@ -59,10 +60,12 @@ class ValidatedSnippetsRepository(Repository):
 
         try:
             lower_tokens = list(map(lambda t: t.lower(), tokens))
-            start = next(filter(
-                lambda i: lower_tokens[i].startswith(lbl_tokens[0]),
-                range(len(lower_tokens))
-            ))
+            start = next(
+                filter(
+                    lambda i: lower_tokens[i].startswith(lbl_tokens[0]),
+                    range(len(lower_tokens)),
+                )
+            )
             token_lbls[start : start + len(lbl_tokens)] = lbl
         except Exception as e:
             pass
@@ -113,14 +116,19 @@ class ValidatedSnippetsRepository(Repository):
         transform_f: Callable[[pd.DataFrame], pd.DataFrame] = lambda x: x,
         batch_size: Optional[int] = None,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-
         if is_test:
             extras = dict(
-                skiprows = self.n_train_rows,
-                names = ['Unnamed: 0', 'dyad_id', 'm1_score', 'mention_candidate', 'snippet']
+                skiprows=self.n_train_rows,
+                names=[
+                    "Unnamed: 0",
+                    "dyad_id",
+                    "m1_score",
+                    "mention_candidate",
+                    "snippet",
+                ],
             )
         else:
-            extras = dict(nrows = self.n_train_rows)
+            extras = dict(nrows=self.n_train_rows)
 
         def iter_f():
             for batch in pd.read_csv(path, chunksize=batch_size, **extras):
@@ -133,9 +141,10 @@ class ValidatedSnippetsRepository(Repository):
             return transform_f(df)
 
     def get_training_data(
-        self, batch_size: Optional[int] = None, balance_labels: bool = False,
+        self,
+        batch_size: Optional[int] = None,
+        balance_labels: bool = False,
     ) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
-
         if balance_labels:
             logger.warning(
                 "Balancing labels is not implemented for ValidatedSnippetsRepository, ignoring"
@@ -145,7 +154,6 @@ class ValidatedSnippetsRepository(Repository):
         aggregate_f = lambda x: pd.concat(x.values, ignore_index=True)
         transform_aggregate_f = lambda x: aggregate_f(transform_f(x))
         return self.get_iter_or_df(self.path, False, transform_aggregate_f, batch_size)
-
 
     def get_validation_data(
         self, batch_size: Optional[int] = None
