@@ -187,7 +187,9 @@ class KaggleModel2(bm.Model):
 
                     filtered_entities.extend(entities)
                     filtered_entity_snippets.extend(snippets)
-                    filtered_confidences.extend(confidences)
+                    filtered_confidences.extend(
+                        list(map(lambda c: str(c[1]), confidences))
+                    )
 
             return (
                 "|".join(filtered_entities),
