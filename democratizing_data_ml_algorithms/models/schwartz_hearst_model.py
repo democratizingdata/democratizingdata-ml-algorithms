@@ -40,8 +40,10 @@ class SchwartzHearstModel(Model):
 
         df[
             ["model_prediction", "prediction_snippet", "prediction_confidence"]
-        ] = df["text"].apply(
-            infer_sample,
+        ] = df.apply(
+            lambda x:infer_sample(
+                x["text"],
+            ),
             result_type="expand",
             axis=1,
         )
