@@ -108,11 +108,13 @@ class KaggleModel1(bm.Model):
             text=split_up,
         )
 
-    def _slice_up_text(self, seq_len: int, text: str) -> List[str]:
+    def _slice_up_text(self, seq_len: int, overlap:int, text: str) -> List[str]:
+
         tokens = text.replace("\n", " ").split()
+        iter_len = seq_len - overlap
 
         split_up = [
-            " ".join(tokens[i * seq_len : (i + 1) * seq_len])
+            " ".join(tokens[i * iter_len : (i + 1) * iter_len + overlap])
             for i in range(len(tokens) // seq_len)
         ]
 
@@ -226,7 +228,11 @@ class KaggleModel1(bm.Model):
             clean = lambda t: t.replace("##", "")
 
         def infer_sample(text: str) -> str:
-            sents = self._slice_up_text(config["seq_len"], text)
+            sents = self._slice_up_text(
+                config["seq_len"],
+                config["overlap"],
+                text
+            )
 
             datasets = []
             for batch in spacy.util.minibatch(sents, config["batch_size"]):
