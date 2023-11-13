@@ -26,11 +26,11 @@ class SchwartzHearstModel(Model):
 
     def inference(self, config: Dict[str, Any], df: pd.DataFrame) -> pd.DataFrame:
         def infer_sample(text: List[Dict[str, str]]) -> str:
-            extractions = list(chain.from_iterable(
-                extract_abbreviation_definition_pairs(doc_text=text)
-            ))
-
-
+            extractions = list(
+                chain.from_iterable(
+                    extract_abbreviation_definition_pairs(doc_text=text)
+                )
+            )
 
             return (
                 "|".join(extractions),
@@ -41,7 +41,7 @@ class SchwartzHearstModel(Model):
         df[
             ["model_prediction", "prediction_snippet", "prediction_confidence"]
         ] = df.apply(
-            lambda x:infer_sample(
+            lambda x: infer_sample(
                 x["text"],
             ),
             result_type="expand",
