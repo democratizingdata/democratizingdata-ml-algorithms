@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from typing import Dict, Iterator
 
 import regex
+from unidecode import unidecode
 
 logger = logging.getLogger("SchwatzHearst")
 
@@ -40,7 +41,7 @@ def yield_lines_from_file(file_path: str) -> Iterator[str]:
 
 def yield_lines_from_doc(doc_text: str) -> Iterator[str]:
     for line in doc_text.split("\n"):
-        yield line.strip()
+        yield unidecode(line.strip())
 
 
 def best_candidates(sentence: str) -> Iterator[Candidate]:
