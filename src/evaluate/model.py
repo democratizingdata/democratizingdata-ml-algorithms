@@ -91,10 +91,12 @@ def merge_stats(row:pd.DataFrame) -> Dict[str, Any]:
         else:
             merged_stats.append(self_stat)
 
-    # for other_lbl in set(other_labels) - set(self_labels):
-    #     other_stat = other_stats[other_labels.index(other_lbl)]
-    #     merged_lbls.append(other_lbl)
-    #     merged_stats.append(other_stat)
+    # ----
+    for other_lbl in set(other_labels) - set(self_labels):
+        other_stat = other_stats[other_labels.index(other_lbl)]
+#         print(other_lbl, other_stat)
+        merged_lbls.append(other_lbl)
+        merged_stats.append(other_stat)
 
     return {"id":_id, "statistics": dict(labels=merged_lbls, stats=merged_stats)}
 
@@ -120,6 +122,10 @@ class ModelEvaluation:
             return self.tp / (self.tp + self.fn)
         except ZeroDivisionError:
             return 0
+        
+    @property
+    def f1(self) -> float:
+        return 2 / (self.recall**-1 + self.precision**-1)
 
     def to_json(self) -> Dict[str, Any]:
         json_encoding = dict(
@@ -149,6 +155,7 @@ class ModelEvaluation:
         - True Postive Count: {self.tp}, avg: {self.tp / len(self.output_statistics)} per sample
         - Precision: {self.precision}
         - Recall: {self.recall}
+        - f1: {self.f1}
         """
 
     def __or__(self, other:"ModelEvaluation") -> "ModelEvaluation":
