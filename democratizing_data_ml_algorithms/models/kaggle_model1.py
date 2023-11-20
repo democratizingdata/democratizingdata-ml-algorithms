@@ -310,9 +310,9 @@ class KaggleModel1(bm.Model):
 
         if config.get("inference_progress_bar", False):
             tqdm.pandas()
-            df["model_prediction"] = df["text"].progress_apply(infer_sample)
+            df.loc[:, ["model_prediction"]] = df["text"].progress_apply(infer_sample)
         else:
-            df["model_prediction"] = df["text"].apply(infer_sample)
+            df.loc[:, ["model_prediction"]] = df["text"].apply(infer_sample)
 
         return df
 
