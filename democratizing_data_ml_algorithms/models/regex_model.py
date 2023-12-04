@@ -262,7 +262,7 @@ class RegexModel(bm.Model):
             matches, snippets = zip(*matches_snippets) if matches_snippets else ([], [])
             return (
                 "|".join(matches),
-                "|".join(snippets),
+                "|".join(map(lambda x: x.replace('|',''),snippets)),
                 "|".join("1.0" for _ in matches),
             )
 
