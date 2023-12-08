@@ -483,7 +483,7 @@ class NERModel_pytorch(bm.Model):
                 list(map(lambda x: " ".join(map(lambda y: str(y[1]), x)), datasets))
             )
 
-            snippets = "|".join(map(lambda x: x.replace('|',''),contexts)),
+            snippets = "|".join(map(lambda x: x.replace('|',''),contexts))
 
             return matches, snippets, confidences
 
