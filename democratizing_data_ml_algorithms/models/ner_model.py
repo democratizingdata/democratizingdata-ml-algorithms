@@ -482,22 +482,10 @@ class NERModel_pytorch(bm.Model):
             confidences = "|".join(
                 list(map(lambda x: str(np.mean(list(map(lambda y: y[1], x)))), datasets))
             )
-            
-            # confidences = "|".join(
-            #     list(map(lambda x: " ".join(map(lambda y: str(y[1]), x)), datasets))
-            # )
 
             snippets = "|".join(map(lambda x: x.replace('|',''),contexts))
 
             return matches, snippets, confidences
-
-        # df[
-        #     ["model_prediction", "prediction_snippet", "prediction_confidence"]
-        # ] = df.apply(
-        #     lambda x: infer_sample(x["text"]),
-        #     result_type="expand",
-        #     axis=1,
-        # )
 
         if config.get("inference_progress_bar", False):
             tqdm.pandas()
