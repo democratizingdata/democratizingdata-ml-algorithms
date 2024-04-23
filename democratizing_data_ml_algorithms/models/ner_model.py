@@ -469,8 +469,8 @@ class NERModel_pytorch(bm.Model):
                     merged_sent = high_probablity_token_groups(
                         t_classifications, threshold=0.0
                     )
-                    merged_sent = " ".join(
-                        list(map(lambda x: x[0], chain(*merged_sent)))
+                    merged_sent = "&".join(
+                        list(map(lambda x: x[0].replace('&',''), chain(*merged_sent)))
                     )
 
                     contexts.extend([merged_sent] * len(detections))
