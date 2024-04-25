@@ -52,9 +52,9 @@ nltk.download("stopwords", quiet=True)
 nltk.download("punkt", quiet=True)
 stop_words = set(stopwords.words("english"))
 
-tf.random.set_seed(42)
-random.seed(42)
-np.random.seed(42)
+# tf.random.set_seed(42)
+# random.seed(42)
+# np.random.seed(42)
 
 # Some of the code is too chatty if you wrap it in this, then it redirect the
 # print statements to a black hole
