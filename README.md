@@ -22,12 +22,10 @@ The project is laid out in the following way:
   Kaggle model 2 are there as they don't have any copyright restrictions. To
   train more models you will likely need the Kaggle data, which is not publicly
   available. The Kaggle data can be downloaded from
-  [here](https://drive.google.com/file/d/1Njf_dcjLk7tnh2icmHWIOHWa5wybSs6k/view?usp=drive_link),
+  [here](https://www.kaggle.com/c/coleridgeinitiative-show-us-the-data/data),
   but you need to request access to the data. Additionally, models that train on
   sentence-level need the snippet data which can be generated using the Kaggle
-  data and the SnippetRepository, or directly downloaded from
-  [here](https://drive.google.com/file/d/19iglyVPPUl7RtpERftg6v66rXUfm-Mx7/view?usp=drive_link).
-  The current version of the snippet data is 2.7.23.
+  data and the SnippetRepository.
 
 - `/models` is for storing trained model params. For example, the 3rd place
    Kaggle model (`democratizing_data_ml_algorithms/models/kagglemodel3.py`)
