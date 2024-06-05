@@ -22,8 +22,8 @@ The project is laid out in the following way:
   Kaggle model 2 are there as they don't have any copyright restrictions. To
   train more models you will likely need the Kaggle data, which is not publicly
   available. The Kaggle data can be downloaded from
-  [here](https://www.kaggle.com/c/coleridgeinitiative-show-us-the-data/data),
-  but you need to request access to the data. Additionally, models that train on
+  [here](https://www.kaggle.com/c/coleridgeinitiative-show-us-the-data/data).
+  Additionally, models that train on
   sentence-level need the snippet data which can be generated using the Kaggle
   data and the SnippetRepository.
 
